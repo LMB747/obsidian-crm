@@ -278,7 +278,7 @@ export const useProspectionStore = create<ProspectionStore>()(
           useProspectionStore.getState().updateScrapeJob(jobId, {
             status: 'error',
             errorMessage:
-              "Aucune plateforme sélectionnée n'est supportée par Apify. Essayez LinkedIn, Google Maps, Instagram, GitHub, TikTok ou ProductHunt.",
+              `Aucune des plateformes sélectionnées n'est supportée. Plateformes disponibles : LinkedIn, Google Maps, Instagram, TikTok, GitHub, Twitter, Facebook, YouTube, Crunchbase, Upwork, Indeed, ProductHunt, Malt, Le Bon Coin, Behance, Dribbble et plus.`,
           });
           return;
         }

@@ -4,7 +4,8 @@ import {
   Calendar, Users, ChevronDown, ChevronRight,
   Circle, CheckCircle2, AlertCircle, Pause,
   Edit2, Trash2, Target, ArrowUpRight, BarChart3,
-  List, Columns, AlertTriangle, Download
+  List, Columns, AlertTriangle, Download,
+  Activity, MessageSquare, FolderPlus, ArrowRight, Flag, FileText
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { Project, ProjectStatus, Task } from '../types';
@@ -41,6 +42,57 @@ const kanbanColumns: { statut: ProjectStatus; borderColor: string; titleColor: s
 
 const INPUT_CLASS = 'w-full bg-obsidian-700 border border-card-border text-white text-sm rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 transition-all';
 
+// ─── ProjectTimeline ─────────────────────────────────────────────────────────
+const ProjectTimeline: React.FC<{ project: Project }> = ({ project }) => {
+  const log = project.activityLog || [];
+  if (log.length === 0) return (
+    <div className="flex flex-col items-center justify-center py-10 text-slate-500">
+      <Activity className="w-8 h-8 mb-2 opacity-30" />
+      <p className="text-sm">Aucune activité enregistrée</p>
+    </div>
+  );
+
+  const TYPE_ICONS: Record<string, { icon: React.ComponentType<{ className?: string }>, color: string }> = {
+    'projet_cree':  { icon: FolderPlus,    color: 'text-primary-400' },
+    'tache_cree':   { icon: Plus,          color: 'text-accent-cyan' },
+    'tache_statut': { icon: ArrowRight,    color: 'text-amber-400' },
+    'tache_note':   { icon: MessageSquare, color: 'text-purple-400' },
+    'tache_temps':  { icon: Clock,         color: 'text-blue-400' },
+    'milestone':    { icon: Flag,          color: 'text-green-400' },
+    'facture':      { icon: FileText,      color: 'text-emerald-400' },
+    'commentaire':  { icon: MessageSquare, color: 'text-slate-400' },
+  };
+
+  return (
+    <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+      {log.map((entry, i) => {
+        const cfg = TYPE_ICONS[entry.type] || TYPE_ICONS['commentaire'];
+        const Icon = cfg.icon;
+        return (
+          <div key={entry.id} className="flex items-start gap-3">
+            <div className="flex flex-col items-center">
+              <div className="w-7 h-7 rounded-lg bg-card border border-card-border flex items-center justify-center flex-shrink-0">
+                <Icon className={clsx('w-3.5 h-3.5', cfg.color)} />
+              </div>
+              {i < log.length - 1 && <div className="w-px h-4 bg-card-border mt-1" />}
+            </div>
+            <div className="flex-1 min-w-0 pb-2">
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <span className="text-sm font-medium text-white">{entry.titre}</span>
+                <span className="text-xs text-slate-500">{entry.auteurNom}</span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">{entry.description}</p>
+              <p className="text-[10px] text-slate-600 mt-0.5">
+                {new Date(entry.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 const today = new Date().toISOString().split('T')[0];
 
 const defaultNewProject = {
@@ -65,6 +117,7 @@ export const Projects: React.FC = () => {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [addTaskModal, setAddTaskModal] = useState<string | null>(null);
   const [newTask, setNewTask] = useState({ titre: '', description: '', assigneA: '', dateEcheance: '', heuresEstimees: 8, priorite: 'normale' as Task['priorite'], statut: 'todo' as Task['statut'], tags: [] as string[] });
+  const [projectTab, setProjectTab] = useState<Record<string, 'tasks' | 'timeline'>>({});
 
   // ── Add Project Modal ──────────────────────────────────────────────────────
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -137,6 +190,7 @@ export const Projects: React.FC = () => {
       milestones: [],
       equipe: [],
       tags: [],
+      activityLog: [],
     });
     setIsAddModalOpen(false);
     setNewProject(defaultNewProject);
@@ -199,7 +253,7 @@ export const Projects: React.FC = () => {
   };
 
   const handleAddTask = (projectId: string) => {
-    addTask(projectId, { ...newTask, heuresReelles: 0 });
+    addTask(projectId, { ...newTask, heuresReelles: 0, notes: [] });
     setAddTaskModal(null);
     setNewTask({ titre: '', description: '', assigneA: '', dateEcheance: '', heuresEstimees: 8, priorite: 'normale', statut: 'todo', tags: [] });
   };
@@ -450,6 +504,33 @@ export const Projects: React.FC = () => {
                 {/* Expanded: Tasks & Milestones */}
                 {isExpanded && (
                   <div className="border-t border-card-border bg-obsidian-800/50">
+                    {/* Tab bar */}
+                    <div className="flex items-center gap-1 px-5 pt-3 border-b border-card-border/50">
+                      {(['tasks', 'timeline'] as const).map(tab => (
+                        <button
+                          key={tab}
+                          onClick={() => setProjectTab(prev => ({ ...prev, [project.id]: tab }))}
+                          className={clsx(
+                            'flex items-center gap-1.5 px-3 py-1.5 rounded-t-lg text-xs font-semibold border-b-2 transition-all',
+                            (projectTab[project.id] ?? 'tasks') === tab
+                              ? 'border-primary-500 text-primary-400'
+                              : 'border-transparent text-slate-500 hover:text-white'
+                          )}
+                        >
+                          {tab === 'tasks' ? <><CheckSquare className="w-3.5 h-3.5" /> Tâches & Milestones</> : <><Activity className="w-3.5 h-3.5" /> Timeline</>}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Timeline tab */}
+                    {(projectTab[project.id] ?? 'tasks') === 'timeline' && (
+                      <div className="p-5">
+                        <ProjectTimeline project={project} />
+                      </div>
+                    )}
+
+                    {/* Tasks & Milestones tab */}
+                    {(projectTab[project.id] ?? 'tasks') === 'tasks' && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 divide-x divide-card-border">
 
                       {/* Tasks */}
@@ -564,6 +645,7 @@ export const Projects: React.FC = () => {
                         </div>
                       </div>
                     </div>
+                    )}
                   </div>
                 )}
               </div>

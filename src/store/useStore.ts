@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import { CRMStore, Client, Freelancer, Project, Invoice, SnoozeSubscription, Activity, Task, AgencySettings, TimerSession, UserAccount, AuditLog } from '../types';
+import { CRMStore, Client, Freelancer, Project, Invoice, SnoozeSubscription, Activity, Task, AgencySettings, TimerSession, UserAccount, AuditLog, TaskNote, ProjectActivity, Notification } from '../types';
 import { toast } from '../components/ui/Toast';
 import { verifyPassword } from '../utils/crypto';
 import {
@@ -131,7 +131,8 @@ export const useStore = create<CRMStore>()(
 
       // ─── Project Actions ───────────────────────────────────────────────────
       addProject: (projectData) => {
-        const newProject: Project = { ...projectData, id: uuidv4() };
+        const newProject: Project = { ...projectData, id: uuidv4(), activityLog: [] };
+        const currentUser = get().currentUser;
         set((state) => ({ projects: [...state.projects, newProject] }));
         get().addActivity({
           type: 'projet',
@@ -140,6 +141,14 @@ export const useStore = create<CRMStore>()(
           date: new Date().toISOString(),
           entityId: newProject.id,
           entityNom: newProject.nom,
+        });
+        get().addProjectActivity(newProject.id, {
+          type: 'projet_cree',
+          auteurId: currentUser?.id || 'system',
+          auteurNom: currentUser ? `${currentUser.prenom} ${currentUser.nom}` : 'Admin',
+          titre: 'Projet créé',
+          description: `Budget : ${newProject.budget.toLocaleString('fr-FR')} € — Client : ${newProject.clientNom}`,
+          date: new Date().toISOString(),
         });
         toast.success('Projet créé', newProject.nom);
       },
@@ -156,22 +165,107 @@ export const useStore = create<CRMStore>()(
       },
 
       addTask: (projectId, taskData) => {
-        const newTask: Task = { ...taskData, id: uuidv4() };
+        const newTask: Task = { ...taskData, id: uuidv4(), notes: taskData.notes || [] };
+        const currentUser = get().currentUser;
         set((state) => ({
           projects: state.projects.map((p) =>
             p.id === projectId ? { ...p, taches: [...p.taches, newTask] } : p
           ),
         }));
+        const project = get().projects.find(p => p.id === projectId);
+        get().addProjectActivity(projectId, {
+          type: 'tache_cree',
+          auteurId: currentUser?.id || 'system',
+          auteurNom: currentUser ? `${currentUser.prenom} ${currentUser.nom}` : 'Admin',
+          titre: 'Nouvelle tâche créée',
+          description: `"${newTask.titre}" assignée à ${newTask.assigneA || 'personne'}`,
+          date: new Date().toISOString(),
+          taskId: newTask.id,
+          taskTitre: newTask.titre,
+        });
+        if (newTask.assigneA) {
+          get().addNotification({
+            titre: 'Nouvelle tâche assignée',
+            message: `"${newTask.titre}" dans ${project?.nom || 'un projet'} a été assignée à ${newTask.assigneA}`,
+            type: 'info',
+            lu: false,
+            date: new Date().toISOString(),
+          });
+        }
       },
 
       updateTask: (projectId, taskId, updates) => {
+        const prevProject = get().projects.find(p => p.id === projectId);
+        const prevTask = prevProject?.taches.find(t => t.id === taskId);
+        const currentUser = get().currentUser;
+
         set((state) => ({
-          projects: state.projects.map((p) =>
-            p.id === projectId
-              ? { ...p, taches: p.taches.map((t) => (t.id === taskId ? { ...t, ...updates } : t)) }
-              : p
-          ),
+          projects: state.projects.map((p) => {
+            if (p.id !== projectId) return p;
+            const updatedTaches = p.taches.map((t) => (t.id === taskId ? { ...t, ...updates } : t));
+            // Auto-calcul progression
+            const total = updatedTaches.length;
+            const done = updatedTaches.filter(t => t.statut === 'fait').length;
+            const progression = total > 0 ? Math.round((done / total) * 100) : p.progression;
+            return { ...p, taches: updatedTaches, progression };
+          }),
         }));
+
+        // Notification si changement de statut
+        if (updates.statut && prevTask && updates.statut !== prevTask.statut) {
+          const taskName = prevTask.titre;
+          const authorName = currentUser ? `${currentUser.prenom} ${currentUser.nom}` : 'Système';
+          const authorId = currentUser?.id || 'system';
+
+          const statusLabels: Record<string, string> = { 'todo': 'À faire', 'en cours': 'En cours', 'fait': 'Terminé' };
+          const isFreelancer = currentUser?.role === 'freelancer';
+
+          // Notif pour l'admin si c'est un freelancer qui change
+          if (isFreelancer) {
+            get().addNotification({
+              titre: `Tâche mise à jour`,
+              message: `${authorName} → "${taskName}" est maintenant "${statusLabels[updates.statut]}"`,
+              type: updates.statut === 'fait' ? 'success' : 'info',
+              lu: false,
+              date: new Date().toISOString(),
+            });
+          }
+
+          // Activity log du projet
+          get().addProjectActivity(projectId, {
+            type: 'tache_statut',
+            auteurId: authorId,
+            auteurNom: authorName,
+            titre: `Statut modifié`,
+            description: `"${taskName}" : ${statusLabels[prevTask.statut] || prevTask.statut} → ${statusLabels[updates.statut] || updates.statut}`,
+            date: new Date().toISOString(),
+            taskId,
+            taskTitre: taskName,
+            metadata: { ancienStatut: prevTask.statut, nouveauStatut: updates.statut },
+          });
+
+          // Activité globale
+          get().addActivity({
+            type: 'tache',
+            titre: `Tâche ${updates.statut === 'fait' ? 'terminée' : 'mise à jour'}`,
+            description: `"${taskName}" dans ${prevProject?.nom || 'projet'}`,
+            date: new Date().toISOString(),
+            entityId: projectId,
+            entityNom: prevProject?.nom,
+          });
+
+          // Si projet à 100%, notifier
+          const project = get().projects.find(p => p.id === projectId);
+          if (project && project.progression === 100 && updates.statut === 'fait') {
+            get().addNotification({
+              titre: '🎉 Projet terminé !',
+              message: `Toutes les tâches de "${project.nom}" sont complètes. Pensez à créer la facture finale.`,
+              type: 'success',
+              lu: false,
+              date: new Date().toISOString(),
+            });
+          }
+        }
       },
 
       deleteTask: (projectId, taskId) => {
@@ -200,6 +294,28 @@ export const useStore = create<CRMStore>()(
         set((state) => ({
           invoices: state.invoices.map((i) => (i.id === id ? { ...i, ...updates } : i)),
         }));
+        // Lier au projet si payée
+        if (updates.statut === 'payée') {
+          const inv = get().invoices.find(i => i.id === id);
+          if (inv?.projectId) {
+            get().addProjectActivity(inv.projectId, {
+              type: 'facture',
+              auteurId: get().currentUser?.id || 'system',
+              auteurNom: get().currentUser ? `${get().currentUser!.prenom} ${get().currentUser!.nom}` : 'Admin',
+              titre: 'Facture payée',
+              description: `Facture ${inv.numero} — ${inv.total.toLocaleString('fr-FR')} €`,
+              date: new Date().toISOString(),
+              metadata: { invoiceId: id, amount: inv.total },
+            });
+          }
+          get().addActivity({
+            type: 'facture',
+            titre: 'Paiement reçu',
+            description: `${get().invoices.find(i => i.id === id)?.numero} — payée`,
+            date: new Date().toISOString(),
+            entityId: id,
+          });
+        }
       },
 
       deleteInvoice: (id) => {
@@ -255,6 +371,17 @@ export const useStore = create<CRMStore>()(
           entityId: sessionData.projectId,
           entityNom: sessionData.projectNom,
         });
+        get().addProjectActivity(sessionData.projectId, {
+          type: 'tache_temps',
+          auteurId: get().currentUser?.id || 'system',
+          auteurNom: get().currentUser ? `${get().currentUser!.prenom} ${get().currentUser!.nom}` : 'Système',
+          titre: 'Temps enregistré',
+          description: `${sessionData.dureeMinutes} min sur "${sessionData.taskTitre}"`,
+          date: new Date().toISOString(),
+          taskId: sessionData.taskId,
+          taskTitre: sessionData.taskTitre,
+          metadata: { dureeMinutes: sessionData.dureeMinutes },
+        });
         toast.info('Session enregistrée', `${sessionData.dureeMinutes} min`);
       },
 
@@ -309,6 +436,90 @@ export const useStore = create<CRMStore>()(
         }));
       },
 
+      addTaskNote: (projectId, taskId, noteData) => {
+        const newNote: TaskNote = { ...noteData, id: uuidv4() };
+        const project = get().projects.find(p => p.id === projectId);
+        const task = project?.taches.find(t => t.id === taskId);
+
+        set((state) => ({
+          projects: state.projects.map((p) =>
+            p.id === projectId
+              ? {
+                  ...p,
+                  taches: p.taches.map((t) =>
+                    t.id === taskId
+                      ? { ...t, notes: [...(t.notes || []), newNote] }
+                      : t
+                  ),
+                }
+              : p
+          ),
+        }));
+
+        // Activity log projet
+        get().addProjectActivity(projectId, {
+          type: 'tache_note',
+          auteurId: noteData.auteurId,
+          auteurNom: noteData.auteurNom,
+          titre: 'Note d\'avancement',
+          description: `${noteData.auteurNom} sur "${task?.titre || 'tâche'}" : ${noteData.texte.slice(0, 80)}${noteData.texte.length > 80 ? '…' : ''}`,
+          date: new Date().toISOString(),
+          taskId,
+          taskTitre: task?.titre,
+        });
+
+        // Notification admin
+        const currentUser = get().currentUser;
+        if (currentUser?.role === 'freelancer') {
+          get().addNotification({
+            titre: 'Nouvelle note d\'avancement',
+            message: `${noteData.auteurNom} a commenté la tâche "${task?.titre}" dans "${project?.nom}"`,
+            type: 'info',
+            lu: false,
+            date: new Date().toISOString(),
+          });
+        }
+
+        get().addActivity({
+          type: 'tache',
+          titre: 'Note d\'avancement ajoutée',
+          description: `${noteData.auteurNom} — "${task?.titre}"`,
+          date: new Date().toISOString(),
+          entityId: projectId,
+          entityNom: project?.nom,
+        });
+      },
+
+      addProjectActivity: (projectId, activityData) => {
+        const newActivity: ProjectActivity = { ...activityData, id: uuidv4() };
+        set((state) => ({
+          projects: state.projects.map((p) =>
+            p.id === projectId
+              ? { ...p, activityLog: [newActivity, ...(p.activityLog || [])].slice(0, 100) }
+              : p
+          ),
+        }));
+      },
+
+      addNotification: (notifData) => {
+        const notif: Notification = { ...notifData, id: uuidv4() };
+        set((state) => ({
+          notifications: [notif, ...state.notifications].slice(0, 50),
+        }));
+      },
+
+      markNotificationRead: (id) => {
+        set((state) => ({
+          notifications: state.notifications.map(n => n.id === id ? { ...n, lu: true } : n),
+        }));
+      },
+
+      markAllNotificationsRead: () => {
+        set((state) => ({
+          notifications: state.notifications.map(n => ({ ...n, lu: true })),
+        }));
+      },
+
       completeSetup: ({ agencyName, adminEmail, passwordHash }) => {
         set((state) => ({
           setupComplete: true,
@@ -323,7 +534,7 @@ export const useStore = create<CRMStore>()(
     }),
     {
       name: 'obsidian-crm-storage',
-      version: 3,
+      version: 4,
       migrate: (persistedState: any, version: number) => {
         // v1→v2 : migrate old SnoozePlan names + add missing fields
         if (version < 2 && persistedState?.snoozeSubscriptions) {

@@ -1,8 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Target, CheckCircle2, Clock, PlayCircle,
   AlertCircle, Calendar, TrendingUp, Briefcase,
-  ChevronRight, ListTodo
+  ChevronRight, ListTodo, MessageSquare, Send, ChevronDown, ChevronUp, X
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useStore } from '../store/useStore';
@@ -35,9 +35,15 @@ interface TaskCardProps {
   task: Task;
   project: Project;
   onStatusChange: (taskId: string, projectId: string, statut: Task['statut']) => void;
+  onAddNote: (projectId: string, taskId: string, texte: string) => void;
+  currentUserName: string;
 }
 
-const TaskCard: React.FC<TaskCardProps> = ({ task, project, onStatusChange }) => {
+const TaskCard: React.FC<TaskCardProps> = ({ task, project, onStatusChange, onAddNote }) => {
+  const [showNotes, setShowNotes] = useState(false);
+  const [noteText, setNoteText] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
   const priorityCfg = PRIORITY_CONFIG[task.priorite];
   const statusCfg   = STATUS_CONFIG[task.statut];
   const StatusIcon  = statusCfg.icon;
@@ -49,12 +55,21 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, project, onStatusChange }) =>
   const isOverdue = task.dateEcheance && task.statut !== 'fait'
     && new Date(task.dateEcheance) < new Date();
 
+  const notes = task.notes || [];
+  const recentNotes = notes.slice(0, 3);
+
+  const handleSubmitNote = () => {
+    if (!noteText.trim()) return;
+    onAddNote(project.id, task.id, noteText.trim());
+    setNoteText('');
+    setSubmitting(false);
+  };
+
   return (
     <div className="bg-card border border-card-border rounded-xl p-5 hover:border-primary-500/30 transition-all space-y-4">
       {/* Top row */}
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
-          {/* Project badge */}
           <div className="flex items-center gap-2 mb-1.5 flex-wrap">
             <span className={clsx('px-2 py-0.5 rounded-full text-xs font-medium', PROJECT_STATUS_COLORS[project.statut] ?? 'bg-slate-500/20 text-slate-400')}>
               {project.nom}
@@ -68,8 +83,6 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, project, onStatusChange }) =>
             <p className="text-slate-400 text-xs mt-1 line-clamp-2">{task.description}</p>
           )}
         </div>
-
-        {/* Status badge */}
         <span className={clsx('flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border flex-shrink-0', statusCfg.className)}>
           <StatusIcon className="w-3 h-3" />
           {statusCfg.label}
@@ -91,6 +104,12 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, project, onStatusChange }) =>
             {task.heuresReelles}h / {task.heuresEstimees}h
           </span>
         )}
+        {notes.length > 0 && (
+          <span className="flex items-center gap-1 text-primary-400">
+            <MessageSquare className="w-3.5 h-3.5" />
+            {notes.length} note{notes.length > 1 ? 's' : ''}
+          </span>
+        )}
       </div>
 
       {/* Progress bar */}
@@ -102,10 +121,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, project, onStatusChange }) =>
           </div>
           <div className="h-1.5 rounded-full bg-obsidian-900 overflow-hidden">
             <div
-              className={clsx(
-                'h-full rounded-full transition-all',
-                progress >= 100 ? 'bg-green-400' : 'bg-gradient-to-r from-primary-500 to-purple-500'
-              )}
+              className={clsx('h-full rounded-full transition-all', progress >= 100 ? 'bg-green-400' : 'bg-gradient-to-r from-primary-500 to-purple-500')}
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -134,13 +150,79 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, project, onStatusChange }) =>
           );
         })}
       </div>
+
+      {/* Notes section */}
+      <div className="border-t border-card-border/50 pt-3 space-y-2">
+        {/* Show recent notes */}
+        {recentNotes.length > 0 && (
+          <div className="space-y-1.5">
+            {recentNotes.map(note => (
+              <div key={note.id} className="flex items-start gap-2 p-2 rounded-lg bg-obsidian-900/60">
+                <div className="flex-shrink-0 w-5 h-5 rounded-full bg-primary-500/20 flex items-center justify-center mt-0.5">
+                  <span className="text-primary-400 text-[10px] font-bold">{note.auteurNom.charAt(0)}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-slate-300 leading-relaxed">{note.texte}</p>
+                  <p className="text-[10px] text-slate-600 mt-0.5">
+                    {note.auteurNom} · {new Date(note.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+              </div>
+            ))}
+            {notes.length > 3 && (
+              <button onClick={() => setShowNotes(v => !v)} className="text-xs text-slate-500 hover:text-white flex items-center gap-1 transition-colors">
+                {showNotes ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                {showNotes ? 'Masquer' : `Voir ${notes.length - 3} note(s) de plus`}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Add note input */}
+        {submitting ? (
+          <div className="flex gap-2">
+            <textarea
+              value={noteText}
+              onChange={e => setNoteText(e.target.value)}
+              placeholder="Décrivez votre avancement..."
+              rows={2}
+              className="flex-1 bg-obsidian-900 border border-card-border rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-primary-500/60 resize-none"
+              autoFocus
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmitNote(); } }}
+            />
+            <div className="flex flex-col gap-1">
+              <button
+                onClick={handleSubmitNote}
+                disabled={!noteText.trim()}
+                className="p-2 rounded-lg bg-primary-500 hover:bg-primary-400 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                <Send className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => { setSubmitting(false); setNoteText(''); }}
+                className="p-2 rounded-lg bg-card border border-card-border text-slate-400 hover:text-white transition-all"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setSubmitting(true)}
+            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-primary-400 transition-colors"
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            Ajouter une note d'avancement
+          </button>
+        )}
+      </div>
     </div>
   );
 };
 
 // ─── FreelancerPortal ─────────────────────────────────────────────────────────
 export const FreelancerPortal: React.FC = () => {
-  const { currentUser, projects, updateTask, setActiveSection, timerSessions } = useStore();
+  const { currentUser, projects, updateTask, addTaskNote, setActiveSection, timerSessions } = useStore();
 
   if (!currentUser) return null;
 
@@ -166,9 +248,9 @@ export const FreelancerPortal: React.FC = () => {
 
   // Stats
   const stats = useMemo(() => {
-    const total     = assignedTasks.length;
+    const total      = assignedTasks.length;
     const inProgress = assignedTasks.filter(({ task }) => task.statut === 'en cours').length;
-    const done      = assignedTasks.filter(({ task }) => task.statut === 'fait').length;
+    const done       = assignedTasks.filter(({ task }) => task.statut === 'fait').length;
     // Heures depuis les sessions de travail sur les projets assignés
     const projectIds = new Set(assignedTasks.map(({ project }) => project.id));
     const heures = timerSessions
@@ -190,7 +272,31 @@ export const FreelancerPortal: React.FC = () => {
   }, [assignedTasks]);
 
   const handleStatusChange = (taskId: string, projectId: string, statut: Task['statut']) => {
+    const prevTask = projects.find(p => p.id === projectId)?.taches.find(t => t.id === taskId);
     updateTask(projectId, taskId, { statut });
+    // Ajoute une note automatique de changement de statut
+    if (prevTask && prevTask.statut !== statut) {
+      const statusLabels: Record<string, string> = { 'todo': 'À faire', 'en cours': 'En cours', 'fait': 'Terminé' };
+      addTaskNote(projectId, taskId, {
+        auteurId: currentUser.id,
+        auteurNom: `${currentUser.prenom} ${currentUser.nom}`,
+        texte: `Statut changé : ${statusLabels[prevTask.statut]} → ${statusLabels[statut]}`,
+        date: new Date().toISOString(),
+        type: 'statut_change',
+        ancienStatut: prevTask.statut,
+        nouveauStatut: statut,
+      });
+    }
+  };
+
+  const handleAddNote = (projectId: string, taskId: string, texte: string) => {
+    addTaskNote(projectId, taskId, {
+      auteurId: currentUser.id,
+      auteurNom: `${currentUser.prenom} ${currentUser.nom}`,
+      texte,
+      date: new Date().toISOString(),
+      type: 'note',
+    });
   };
 
   return (
@@ -224,10 +330,10 @@ export const FreelancerPortal: React.FC = () => {
       {/* Stats mini cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: 'Tâches assignées', value: stats.total,      icon: Target,       color: 'text-white',        bg: 'bg-primary-500/10 border-primary-500/20' },
-          { label: 'En cours',         value: stats.inProgress, icon: PlayCircle,   color: 'text-accent-cyan',  bg: 'bg-accent-cyan/10 border-accent-cyan/20' },
-          { label: 'Terminées',        value: stats.done,       icon: CheckCircle2, color: 'text-green-400',    bg: 'bg-green-500/10 border-green-500/20' },
-          { label: 'Heures enreg.',    value: `${stats.heures}h`, icon: TrendingUp, color: 'text-amber-400',    bg: 'bg-amber-500/10 border-amber-500/20' },
+          { label: 'Tâches assignées', value: stats.total,       icon: Target,       color: 'text-white',       bg: 'bg-primary-500/10 border-primary-500/20' },
+          { label: 'En cours',         value: stats.inProgress,  icon: PlayCircle,   color: 'text-accent-cyan', bg: 'bg-accent-cyan/10 border-accent-cyan/20' },
+          { label: 'Terminées',        value: stats.done,        icon: CheckCircle2, color: 'text-green-400',   bg: 'bg-green-500/10 border-green-500/20' },
+          { label: 'Heures enreg.',    value: `${stats.heures}h`, icon: TrendingUp,  color: 'text-amber-400',   bg: 'bg-amber-500/10 border-amber-500/20' },
         ].map(stat => {
           const Icon = stat.icon;
           return (
@@ -277,6 +383,8 @@ export const FreelancerPortal: React.FC = () => {
                     task={task}
                     project={project}
                     onStatusChange={handleStatusChange}
+                    onAddNote={handleAddNote}
+                    currentUserName={fullName}
                   />
                 ))}
               </div>

@@ -1440,7 +1440,7 @@ interface ReportConfig {
   id: string;
   title: string;
   subtitle: string;
-  template: 'performance' | 'budget' | 'roi' | 'platform' | 'full';
+  template: 'performance' | 'budget' | 'roi' | 'platform' | 'full' | 'allin';
   period: '7d' | '30d' | '90d' | 'custom';
   dateFrom?: string;
   dateTo?: string;
@@ -1494,6 +1494,13 @@ const REPORT_TEMPLATES: {
     label: 'Rapport Client',
     description: 'Synthèse executive pour présentation client',
     defaults: { includeKPIs: true, includeCharts: false, includeTable: true },
+  },
+  {
+    id: 'allin',
+    emoji: '⚡',
+    label: 'Rapport Complet (All-In)',
+    description: 'Toutes les campagnes, plateformes, KPIs et analyses par période',
+    defaults: { includeKPIs: true, includeCharts: true, includeTable: true },
   },
 ];
 
@@ -1998,10 +2005,52 @@ const ReportsTab: React.FC<{ campaigns: Campaign[] }> = ({ campaigns }) => {
         </button>
       </div>
 
+      {/* All-In quick launch card */}
+      <div className="relative overflow-hidden bg-gradient-to-r from-primary-900/60 via-obsidian-800 to-cyan-900/40 border border-primary-500/30 rounded-2xl p-6 flex items-center gap-6">
+        <div className="w-14 h-14 rounded-2xl bg-gradient-primary flex items-center justify-center shadow-glow-purple flex-shrink-0">
+          <LayoutTemplate className="w-7 h-7 text-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="text-white font-display font-bold text-lg">Rapport All-In</h3>
+            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-primary-500/30 text-primary-300 border border-primary-500/40 tracking-wide">NOUVEAU</span>
+          </div>
+          <p className="text-slate-400 text-sm">Rapport complet avec toutes les campagnes, plateformes, KPIs et analyses par période</p>
+          <div className="flex flex-wrap items-center gap-2 mt-3">
+            {(['7d', '30d', '90d'] as const).map((p) => (
+              <button
+                key={p}
+                onClick={() => {
+                  setBuilderConfig({
+                    ...INITIAL_BUILDER,
+                    ...REPORT_TEMPLATES.find(t => t.id === 'allin')?.defaults,
+                    template: 'allin',
+                    period: p,
+                    agencyNom: settings.nom ?? 'Obsidian Agency',
+                    title: `Rapport All-In — ${p === '7d' ? '7 derniers jours' : p === '30d' ? '30 derniers jours' : '90 derniers jours'}`,
+                  });
+                  setShowBuilder(true);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border border-card-border bg-obsidian-700/50 text-slate-300 hover:text-white hover:border-primary-500/40 transition-all"
+              >
+                {p === '7d' ? '7 jours' : p === '30d' ? '30 jours' : '90 jours'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <button
+          onClick={() => openBuilder('allin')}
+          className="flex-shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-primary text-white text-sm font-medium shadow-glow-purple hover:shadow-glow-cyan transition-all"
+        >
+          <FileText className="w-4 h-4" />
+          Générer le rapport All-In
+        </button>
+      </div>
+
       {/* Template cards */}
       <div>
         <h3 className="text-slate-300 font-semibold text-sm uppercase tracking-wider mb-4">Choisir un Template</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
           {REPORT_TEMPLATES.map((tpl) => (
             <button
               key={tpl.id}

@@ -69,6 +69,7 @@ export interface Task {
   heuresEstimees: number;
   heuresReelles: number;
   tags: string[];
+  notes: TaskNote[];
 }
 
 export interface Milestone {
@@ -96,6 +97,7 @@ export interface Project {
   equipe: string[];
   tags: string[];
   categorie: string;
+  activityLog: ProjectActivity[];
 }
 
 // ─── INVOICE ──────────────────────────────────────────────────────────────────
@@ -169,8 +171,34 @@ export interface SnoozeEvent {
   montant?: number;
 }
 
+// ─── TASK NOTES / SUIVI D'AVANCEMENT ─────────────────────────────────────────
+export interface TaskNote {
+  id: string;
+  auteurId: string;
+  auteurNom: string;
+  texte: string;
+  date: string;
+  type: 'note' | 'statut_change' | 'temps_log';
+  ancienStatut?: Task['statut'];
+  nouveauStatut?: Task['statut'];
+}
+
+// ─── PROJECT ACTIVITY LOG ─────────────────────────────────────────────────────
+export interface ProjectActivity {
+  id: string;
+  type: 'tache_cree' | 'tache_statut' | 'tache_note' | 'tache_temps' | 'projet_cree' | 'projet_statut' | 'milestone' | 'facture' | 'commentaire';
+  auteurId: string;
+  auteurNom: string;
+  titre: string;
+  description: string;
+  date: string;
+  taskId?: string;
+  taskTitre?: string;
+  metadata?: Record<string, unknown>;
+}
+
 // ─── ACTIVITY ─────────────────────────────────────────────────────────────────
-export type ActivityType = 'client' | 'projet' | 'facture' | 'snooze' | 'système';
+export type ActivityType = 'client' | 'projet' | 'facture' | 'snooze' | 'système' | 'tache' | 'freelancer';
 
 export interface Activity {
   id: string;
@@ -255,6 +283,13 @@ export interface CRMStore {
 
   // Actions — Settings
   updateSettings: (updates: Partial<AgencySettings>) => void;
+
+  // Actions — Task Notes & Project Activity
+  addTaskNote: (projectId: string, taskId: string, note: Omit<TaskNote, 'id'>) => void;
+  addProjectActivity: (projectId: string, activity: Omit<ProjectActivity, 'id'>) => void;
+  addNotification: (notif: Omit<Notification, 'id'>) => void;
+  markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: () => void;
 
   // Actions — Timer
   addTimerSession: (session: Omit<TimerSession, 'id'>) => void;
