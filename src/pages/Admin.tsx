@@ -9,6 +9,7 @@ import {
 import clsx from 'clsx';
 import { useStore } from '../store/useStore';
 import { UserAccount, UserRole, SectionPermission } from '../types';
+import { hashPassword } from '../utils/crypto';
 
 // ─── Permission section config ────────────────────────────────────────────────
 const SECTION_CONFIG: { id: SectionPermission; label: string; icon: React.FC<{ className?: string }> }[] = [
@@ -95,13 +96,17 @@ const UserModal: React.FC<UserModalProps> = ({ user, onClose, onSave, freelancer
     return Object.keys(e).length === 0;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!validate()) return;
+    const rawPwd = password.trim();
+    const passwordHash = rawPwd
+      ? await hashPassword(rawPwd)
+      : (user?.passwordHash ?? '');
     onSave({
       prenom: prenom.trim(),
       nom: nom.trim(),
       email: email.trim(),
-      password: password.trim() || (user?.password ?? ''),
+      passwordHash,
       role,
       permissions,
       freelancerId: role === 'freelancer' ? freelancerId || undefined : undefined,

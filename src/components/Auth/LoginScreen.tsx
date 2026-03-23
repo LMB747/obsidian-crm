@@ -3,7 +3,7 @@ import { Zap, Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import clsx from 'clsx';
 
 interface LoginScreenProps {
-  onLogin: (email: string, password: string) => { success: boolean; error?: string };
+  onLogin: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
@@ -25,7 +25,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     // Small delay for UX feel
     await new Promise(resolve => setTimeout(resolve, 400));
 
-    const result = onLogin(email.trim(), password);
+    const result = await onLogin(email.trim(), password);
     if (!result.success) {
       setError(result.error ?? 'Erreur de connexion.');
     }

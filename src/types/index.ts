@@ -269,14 +269,16 @@ export interface CRMStore {
   users: UserAccount[];
   auditLogs: AuditLog[];
   currentUser: UserAccount | null;
+  setupComplete: boolean;
 
   // Actions Auth
-  login: (email: string, password: string) => { success: boolean; error?: string };
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   addUser: (user: Omit<UserAccount, 'id' | 'dateCreation'>) => void;
   updateUser: (id: string, updates: Partial<UserAccount>) => void;
   deleteUser: (id: string) => void;
   addAuditLog: (log: Omit<AuditLog, 'id'>) => void;
+  completeSetup: (data: { agencyName: string; adminEmail: string; passwordHash: string }) => void;
 }
 
 export interface Notification {
@@ -330,7 +332,8 @@ export interface UserAccount {
   nom: string;
   prenom: string;
   role: UserRole;
-  password: string;            // stocké en clair (app locale, pas de backend)
+  password?: string;           // @deprecated — utiliser passwordHash
+  passwordHash: string;        // SHA-256 + sel via Web Crypto API
   permissions: SectionPermission[];
   freelancerId?: string;       // lien vers Freelancer si role === 'freelancer'
   isActive: boolean;

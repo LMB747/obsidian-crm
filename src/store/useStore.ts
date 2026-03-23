@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
 import { CRMStore, Client, Freelancer, Project, Invoice, SnoozeSubscription, Activity, Task, AgencySettings, TimerSession, UserAccount, AuditLog } from '../types';
 import { toast } from '../components/ui/Toast';
+import { verifyPassword } from '../utils/crypto';
 import {
   mockClients,
   mockFreelancers,
@@ -14,8 +15,8 @@ import {
 
 const adminAccount: UserAccount = {
   id: 'admin-001',
-  email: 'admin@obsidian.agency',
-  password: 'admin123',
+  email: '',
+  passwordHash: '',
   nom: 'Admin',
   prenom: 'Super',
   role: 'admin',
@@ -25,14 +26,14 @@ const adminAccount: UserAccount = {
 };
 
 const defaultSettings: AgencySettings = {
-  nom: 'Obsidian Agency',
-  adresse: '12 Rue des Créatifs, 75010 Paris',
-  siret: '000 000 000 00000',
-  email: 'contact@obsidian.agency',
-  telephone: '+33 6 00 00 00 00',
+  nom: '',
+  adresse: '',
+  siret: '',
+  email: '',
+  telephone: '',
   logoUrl: '',
   resendApiKey: '',
-  resendFrom: 'Obsidian Agency <noreply@obsidian.agency>',
+  resendFrom: '',
   stripeKey: '',
   supabaseUrl: '',
   supabaseKey: '',
@@ -54,6 +55,7 @@ export const useStore = create<CRMStore>()(
       users: [adminAccount],
       auditLogs: [],
       currentUser: null,
+      setupComplete: false,
 
       // ─── Settings ──────────────────────────────────────────────────────────
       settings: defaultSettings,
@@ -62,11 +64,7 @@ export const useStore = create<CRMStore>()(
       activeSection: 'dashboard',
       sidebarOpen: true,
       searchQuery: '',
-      notifications: [
-        { id: 'n1', titre: 'Facture en retard', message: 'OA-2026-003 est en retard de paiement', type: 'warning', lu: false, date: '2026-03-22' },
-        { id: 'n2', titre: 'Milestone atteint', message: 'Architecture validée sur Pay to Snooze V2', type: 'success', lu: false, date: '2026-03-20' },
-        { id: 'n3', titre: 'Nouvel abonnement', message: 'Anaïs Dupuis a souscrit Enterprise', type: 'info', lu: false, date: '2026-03-22' },
-      ],
+      notifications: [],
 
       // ─── Client Actions ────────────────────────────────────────────────────
       addClient: (clientData) => {
@@ -261,11 +259,13 @@ export const useStore = create<CRMStore>()(
       },
 
       // ─── Auth Actions ──────────────────────────────────────────────────────
-      login: (email, password) => {
+      login: async (email, password) => {
         const users = get().users;
-        const user = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
+        const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
         if (!user) return { success: false, error: 'Email ou mot de passe incorrect.' };
         if (!user.isActive) return { success: false, error: 'Ce compte est désactivé.' };
+        const valid = await verifyPassword(password, user.passwordHash);
+        if (!valid) return { success: false, error: 'Email ou mot de passe incorrect.' };
         const updated = { ...user, derniereConnexion: new Date().toISOString() };
         set(state => ({ currentUser: updated, users: state.users.map(u => u.id === user.id ? updated : u) }));
         get().addAuditLog({ userId: user.id, userNom: `${user.prenom} ${user.nom}`, action: 'login', details: 'Connexion réussie', date: new Date().toISOString() });
@@ -308,10 +308,22 @@ export const useStore = create<CRMStore>()(
           activities: [newActivity, ...state.activities].slice(0, 50),
         }));
       },
+
+      completeSetup: ({ agencyName, adminEmail, passwordHash }) => {
+        set((state) => ({
+          setupComplete: true,
+          settings: { ...state.settings, nom: agencyName, email: adminEmail },
+          users: state.users.map((u) =>
+            u.id === 'admin-001'
+              ? { ...u, email: adminEmail, passwordHash }
+              : u
+          ),
+        }));
+      },
     }),
     {
       name: 'obsidian-crm-storage',
-      version: 2,
+      version: 3,
       migrate: (persistedState: any, version: number) => {
         // v1→v2 : migrate old SnoozePlan names + add missing fields
         if (version < 2 && persistedState?.snoozeSubscriptions) {
@@ -345,6 +357,7 @@ export const useStore = create<CRMStore>()(
         users: state.users,
         auditLogs: state.auditLogs,
         currentUser: state.currentUser,
+        setupComplete: state.setupComplete,
       }),
     }
   )
