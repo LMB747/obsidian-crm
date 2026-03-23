@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
 import { ProspectContact, ScrapeJob, ProspectSource, ProspectionFilter } from '../types/prospection';
 import { useStore } from './useStore';
+import { startApifyRun, checkApifyRun, getApifyResults, PLATFORM_ACTORS } from '../lib/apifyService';
 
 // ─── Default Filters ───────────────────────────────────────────────────────────
 const defaultFilters: ProspectionFilter = {
@@ -17,11 +18,25 @@ const defaultFilters: ProspectionFilter = {
 };
 
 // ─── Store Interface ───────────────────────────────────────────────────────────
+export interface ProspectionApiKeys {
+  apify: string;
+  hunter: string;
+  linkedin: string;
+  twitter: string;
+  google: string;
+  github: string;
+  phantombuster: string;
+}
+
 interface ProspectionStore {
   prospects: ProspectContact[];
   scrapeJobs: ScrapeJob[];
   filters: ProspectionFilter;
   selectedProspects: string[];
+  apiKeys: ProspectionApiKeys;
+
+  // API key action
+  updateApiKeys: (keys: Partial<ProspectionApiKeys>) => void;
 
   // Prospect actions
   addProspect: (prospect: Omit<ProspectContact, 'id'>) => void;
@@ -64,6 +79,7 @@ export const useProspectionStore = create<ProspectionStore>()(
       scrapeJobs: [],
       filters: defaultFilters,
       selectedProspects: [],
+      apiKeys: { apify: '', hunter: '', linkedin: '', twitter: '', google: '', github: '', phantombuster: '' },
 
       // ─── Prospect Actions ─────────────────────────────────────────────────
       addProspect: (prospectData) => {
@@ -99,6 +115,9 @@ export const useProspectionStore = create<ProspectionStore>()(
         })),
 
       clearProspects: () => set({ prospects: [], selectedProspects: [] }),
+
+      updateApiKeys: (keys) =>
+        set((state) => ({ apiKeys: { ...state.apiKeys, ...keys } })),
 
       // ─── Job Actions ──────────────────────────────────────────────────────
       addScrapeJob: (job) =>
@@ -170,8 +189,9 @@ export const useProspectionStore = create<ProspectionStore>()(
         }));
       },
 
-      // ─── Start Scrape Job (with simulated progress) ───────────────────────
+      // ─── Start Scrape Job ─────────────────────────────────────────────────
       startScrapeJob: (config) => {
+        const { apiKeys } = useProspectionStore.getState();
         const jobId = uuidv4();
         const job: ScrapeJob = {
           id: jobId,
@@ -189,55 +209,152 @@ export const useProspectionStore = create<ProspectionStore>()(
 
         set((state) => ({ scrapeJobs: [job, ...state.scrapeJobs] }));
 
-        // Simulate progress
-        const totalDuration = 4000 + Math.random() * 3000;
-        const intervalMs = 200;
-        const steps = Math.floor(totalDuration / intervalMs);
-        let currentStep = 0;
+        // No Apify key → fall back to demo mock data
+        if (!apiKeys.apify.trim()) {
+          // Simulate progress then generate mocks
+          const totalDuration = 4000 + Math.random() * 3000;
+          const intervalMs = 200;
+          const steps = Math.floor(totalDuration / intervalMs);
+          let currentStep = 0;
 
-        const interval = setInterval(() => {
-          currentStep++;
-          const rawProgress = currentStep / steps;
-          // Ease-in-out curve so it doesn't feel mechanical
-          const progress = Math.min(
-            100,
-            Math.round(rawProgress < 0.5
-              ? 2 * rawProgress * rawProgress * 100
-              : (1 - Math.pow(-2 * rawProgress + 2, 2) / 2) * 100
-            )
-          );
+          const tick = () => {
+            currentStep++;
+            const rawProgress = currentStep / steps;
+            const progress = Math.min(
+              100,
+              Math.round(
+                rawProgress < 0.5
+                  ? 2 * rawProgress * rawProgress * 100
+                  : (1 - Math.pow(-2 * rawProgress + 2, 2) / 2) * 100
+              )
+            );
 
-          const { scrapeJobs } = useProspectionStore.getState();
-          const stillRunning = scrapeJobs.find((j) => j.id === jobId)?.status === 'running';
+            const stillRunning =
+              useProspectionStore.getState().scrapeJobs.find((j) => j.id === jobId)?.status === 'running';
 
-          if (!stillRunning) {
-            clearInterval(interval);
-            return;
-          }
+            if (!stillRunning) return;
 
-          if (progress >= 100) {
-            clearInterval(interval);
-            const resultsCount = 10 + Math.floor(Math.random() * 26);
-            // Generate mock prospects
-            const newProspects = generateMockProspects({
-              keywords: config.keywords,
-              location: config.location,
-              sector: config.sector,
-              jobTitle: config.jobTitle,
-              platforms: config.platforms,
-            });
+            if (progress >= 100) {
+              const newProspects = generateMockProspects({
+                keywords: config.keywords,
+                location: config.location,
+                sector: config.sector,
+                jobTitle: config.jobTitle,
+                platforms: config.platforms,
+              });
+              useProspectionStore.getState().addProspects(newProspects);
+              useProspectionStore.getState().updateScrapeJob(jobId, {
+                status: 'completed',
+                progress: 100,
+                resultsCount: newProspects.length,
+                dateCompleted: new Date().toISOString(),
+              });
+            } else {
+              useProspectionStore.getState().updateScrapeJob(jobId, { progress });
+              setTimeout(tick, intervalMs);
+            }
+          };
 
-            useProspectionStore.getState().addProspects(newProspects);
+          setTimeout(tick, intervalMs);
+          return;
+        }
+
+        // Real Apify scraping
+        const apifyKey = apiKeys.apify.trim();
+        const keywordsStr = config.keywords.join(' ');
+        const scrapeInput = {
+          keywords: keywordsStr,
+          location: config.location || '',
+          sector: config.sector || '',
+          maxResults: 30,
+        };
+
+        // Only scrape platforms that have an Apify actor mapping
+        const supportedPlatforms = config.platforms.filter(
+          (p) => PLATFORM_ACTORS[p] !== undefined
+        );
+
+        if (supportedPlatforms.length === 0) {
+          useProspectionStore.getState().updateScrapeJob(jobId, {
+            status: 'error',
+            errorMessage:
+              "Aucune plateforme sélectionnée n'est supportée par Apify. Essayez LinkedIn, Google Maps, Instagram, GitHub, TikTok ou ProductHunt.",
+          });
+          return;
+        }
+
+        // Launch all platform runs concurrently then poll
+        void (async () => {
+          try {
+            // Start a run per platform
+            const runEntries: Array<{ platform: ProspectSource; runId: string }> = [];
+
+            for (const platform of supportedPlatforms) {
+              const { runId, error } = await startApifyRun(apifyKey, platform, scrapeInput);
+              if (error || !runId) continue;
+              runEntries.push({ platform, runId });
+            }
+
+            if (runEntries.length === 0) {
+              useProspectionStore.getState().updateScrapeJob(jobId, {
+                status: 'error',
+                errorMessage: 'Impossible de démarrer les runs Apify. Vérifiez votre clé API.',
+              });
+              return;
+            }
+
+            // Poll until all runs finish
+            const totalRuns = runEntries.length;
+            const poll = async () => {
+              const stillRunning =
+                useProspectionStore.getState().scrapeJobs.find((j) => j.id === jobId)?.status === 'running';
+              if (!stillRunning) return;
+
+              const statuses = await Promise.all(
+                runEntries.map(({ runId }) => checkApifyRun(apifyKey, runId))
+              );
+
+              const doneCount = statuses.filter(
+                (s) => s.status === 'SUCCEEDED' || s.status === 'FAILED' || s.status === 'ABORTED'
+              ).length;
+
+              const progress = Math.min(95, Math.round((doneCount / totalRuns) * 95));
+              useProspectionStore.getState().updateScrapeJob(jobId, { progress });
+
+              const allDone = doneCount === totalRuns;
+
+              if (!allDone) {
+                setTimeout(poll, 3000);
+                return;
+              }
+
+              // Collect results from succeeded runs
+              const allProspects: ProspectContact[] = [];
+              for (const { platform, runId } of runEntries) {
+                const runStatus = statuses[runEntries.findIndex((r) => r.runId === runId)];
+                if (runStatus.status === 'SUCCEEDED') {
+                  const results = await getApifyResults(apifyKey, runId, platform);
+                  allProspects.push(...results);
+                }
+              }
+
+              useProspectionStore.getState().addProspects(allProspects);
+              useProspectionStore.getState().updateScrapeJob(jobId, {
+                status: 'completed',
+                progress: 100,
+                resultsCount: allProspects.length,
+                dateCompleted: new Date().toISOString(),
+              });
+            };
+
+            setTimeout(poll, 3000);
+          } catch (err: unknown) {
             useProspectionStore.getState().updateScrapeJob(jobId, {
-              status: 'completed',
-              progress: 100,
-              resultsCount,
-              dateCompleted: new Date().toISOString(),
+              status: 'error',
+              errorMessage: `Erreur inattendue : ${String(err)}`,
             });
-          } else {
-            useProspectionStore.getState().updateScrapeJob(jobId, { progress });
           }
-        }, intervalMs);
+        })();
       },
     }),
     {
@@ -246,6 +363,7 @@ export const useProspectionStore = create<ProspectionStore>()(
         prospects: state.prospects,
         scrapeJobs: state.scrapeJobs,
         filters: state.filters,
+        apiKeys: state.apiKeys,
       }),
     }
   )

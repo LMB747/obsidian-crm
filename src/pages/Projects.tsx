@@ -70,6 +70,52 @@ export const Projects: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newProject, setNewProject] = useState(defaultNewProject);
 
+  // ── Edit Project Modal ─────────────────────────────────────────────────────
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editProject, setEditProject] = useState(defaultNewProject);
+  const [editProjectId, setEditProjectId] = useState<string | null>(null);
+
+  const openEditModal = (project: Project) => {
+    setEditProjectId(project.id);
+    setEditProject({
+      nom: project.nom,
+      description: project.description,
+      clientId: project.clientId,
+      statut: project.statut,
+      priorite: project.priorite,
+      categorie: project.categorie,
+      dateDebut: project.dateDebut,
+      dateFin: project.dateFin,
+      budget: project.budget,
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditProject = () => {
+    if (!editProjectId || !editProject.nom.trim()) return;
+    const selectedClient = clients.find(c => c.id === editProject.clientId);
+    const clientNom = selectedClient ? (selectedClient.entreprise || selectedClient.nom) : '';
+    updateProject(editProjectId, {
+      nom: editProject.nom,
+      description: editProject.description,
+      clientId: editProject.clientId,
+      clientNom,
+      statut: editProject.statut,
+      priorite: editProject.priorite,
+      categorie: editProject.categorie,
+      dateDebut: editProject.dateDebut,
+      dateFin: editProject.dateFin,
+      budget: editProject.budget,
+    });
+    setIsEditModalOpen(false);
+    setEditProjectId(null);
+  };
+
+  const handleDeleteProject = (id: string) => {
+    deleteProject(id);
+    setConfirmDelete(null);
+  };
+
   const handleAddProject = () => {
     if (!newProject.nom.trim()) return;
     const selectedClient = clients.find(c => c.id === newProject.clientId);
@@ -277,6 +323,20 @@ export const Projects: React.FC = () => {
                           {project.taches.filter(t => t.statut === 'fait').length}/{project.taches.length} tâches
                         </span>
                       </div>
+                      <div className="flex items-center gap-1 mt-2 pt-2 border-t border-card-border/40">
+                        <button
+                          onClick={e => { e.stopPropagation(); openEditModal(project); }}
+                          className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-primary-300 border border-card-border px-2 py-1 rounded-lg hover:bg-primary-500/10 transition-all"
+                        >
+                          <Edit2 className="w-3 h-3" /> Modifier
+                        </button>
+                        <button
+                          onClick={e => { e.stopPropagation(); setConfirmDelete(project.id); }}
+                          className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-accent-red border border-card-border px-2 py-1 rounded-lg hover:bg-red-500/10 transition-all"
+                        >
+                          <Trash2 className="w-3 h-3" /> Supprimer
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -336,11 +396,29 @@ export const Projects: React.FC = () => {
                     </div>
 
                     {/* Right Info */}
-                    <div className="flex-shrink-0 text-right hidden md:block">
-                      <p className="text-white font-bold text-lg">{project.budget.toLocaleString('fr-FR')} €</p>
-                      <p className="text-slate-400 text-xs">Budget</p>
-                      <div className={clsx('mt-1 text-xs font-medium', budgetPercent > 90 ? 'text-accent-red' : budgetPercent > 70 ? 'text-amber-400' : 'text-accent-green')}>
-                        {budgetPercent}% dépensé
+                    <div className="flex-shrink-0 text-right hidden md:flex flex-col items-end gap-2">
+                      <div>
+                        <p className="text-white font-bold text-lg">{project.budget.toLocaleString('fr-FR')} €</p>
+                        <p className="text-slate-400 text-xs">Budget</p>
+                        <div className={clsx('mt-1 text-xs font-medium', budgetPercent > 90 ? 'text-accent-red' : budgetPercent > 70 ? 'text-amber-400' : 'text-accent-green')}>
+                          {budgetPercent}% dépensé
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => openEditModal(project)}
+                          title="Modifier"
+                          className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-primary-300 border border-card-border px-2.5 py-1.5 rounded-lg hover:bg-primary-500/10 transition-all"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" /> Modifier
+                        </button>
+                        <button
+                          onClick={() => setConfirmDelete(project.id)}
+                          title="Supprimer"
+                          className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-accent-red border border-card-border px-2.5 py-1.5 rounded-lg hover:bg-red-500/10 transition-all"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" /> Supprimer
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -537,6 +615,159 @@ export const Projects: React.FC = () => {
           <div className="flex gap-3 pt-2">
             <button onClick={() => setAddTaskModal(null)} className="flex-1 py-2.5 rounded-xl border border-card-border text-slate-400 text-sm font-medium hover:bg-card-hover hover:text-white transition-all">Annuler</button>
             <button onClick={() => addTaskModal && handleAddTask(addTaskModal)} disabled={!newTask.titre} className="flex-1 py-2.5 rounded-xl bg-gradient-primary text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity">Créer la tâche</button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── Confirm Delete Modal ─────────────────────────────────────────── */}
+      <Modal isOpen={!!confirmDelete} onClose={() => setConfirmDelete(null)} title="Confirmer la suppression" size="sm">
+        <div className="space-y-4">
+          <p className="text-slate-300 text-sm">
+            Êtes-vous sûr de vouloir supprimer le projet{' '}
+            <span className="font-semibold text-white">
+              {projects.find(p => p.id === confirmDelete)?.nom}
+            </span>{' '}
+            ? Cette action est irréversible.
+          </p>
+          <div className="flex gap-3 pt-1">
+            <button
+              onClick={() => setConfirmDelete(null)}
+              className="flex-1 py-2.5 rounded-xl border border-card-border text-slate-400 text-sm font-medium hover:bg-card-hover hover:text-white transition-all"
+            >
+              Annuler
+            </button>
+            <button
+              onClick={() => confirmDelete && handleDeleteProject(confirmDelete)}
+              className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-semibold transition-colors"
+            >
+              Supprimer
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── Edit Project Modal ───────────────────────────────────────────── */}
+      <Modal isOpen={isEditModalOpen} onClose={() => { setIsEditModalOpen(false); setEditProjectId(null); }} title="Modifier le Projet" size="lg">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 mb-1.5">Nom <span className="text-accent-red">*</span></label>
+            <input
+              value={editProject.nom}
+              onChange={e => setEditProject(p => ({ ...p, nom: e.target.value }))}
+              className={INPUT_CLASS}
+              placeholder="Nom du projet..."
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 mb-1.5">Description</label>
+            <textarea
+              value={editProject.description}
+              onChange={e => setEditProject(p => ({ ...p, description: e.target.value }))}
+              className={INPUT_CLASS}
+              rows={3}
+              placeholder="Description du projet..."
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Client</label>
+              <select
+                value={editProject.clientId}
+                onChange={e => setEditProject(p => ({ ...p, clientId: e.target.value }))}
+                className={INPUT_CLASS}
+              >
+                <option value="">— Aucun client —</option>
+                {clients.map(c => (
+                  <option key={c.id} value={c.id}>{c.entreprise || c.nom}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Statut</label>
+              <select
+                value={editProject.statut}
+                onChange={e => setEditProject(p => ({ ...p, statut: e.target.value as ProjectStatus }))}
+                className={INPUT_CLASS}
+              >
+                <option value="planification">Planification</option>
+                <option value="en cours">En cours</option>
+                <option value="en révision">En révision</option>
+                <option value="terminé">Terminé</option>
+                <option value="en pause">En pause</option>
+                <option value="annulé">Annulé</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Priorité</label>
+              <select
+                value={editProject.priorite}
+                onChange={e => setEditProject(p => ({ ...p, priorite: e.target.value as Project['priorite'] }))}
+                className={INPUT_CLASS}
+              >
+                <option value="faible">Faible</option>
+                <option value="normale">Normale</option>
+                <option value="haute">Haute</option>
+                <option value="urgente">Urgente</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Catégorie</label>
+              <input
+                value={editProject.categorie}
+                onChange={e => setEditProject(p => ({ ...p, categorie: e.target.value }))}
+                className={INPUT_CLASS}
+                placeholder="Ex: Web, Mobile, Design..."
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Date début</label>
+              <input
+                type="date"
+                value={editProject.dateDebut}
+                onChange={e => setEditProject(p => ({ ...p, dateDebut: e.target.value }))}
+                className={INPUT_CLASS}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Date fin estimée</label>
+              <input
+                type="date"
+                value={editProject.dateFin}
+                onChange={e => setEditProject(p => ({ ...p, dateFin: e.target.value }))}
+                className={INPUT_CLASS}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 mb-1.5">Budget (€)</label>
+            <input
+              type="number"
+              value={editProject.budget}
+              onChange={e => setEditProject(p => ({ ...p, budget: Number(e.target.value) }))}
+              className={INPUT_CLASS}
+              min="0"
+              step="100"
+              placeholder="0"
+            />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={() => { setIsEditModalOpen(false); setEditProjectId(null); }}
+              className="flex-1 py-2.5 rounded-xl border border-card-border text-slate-400 text-sm font-medium hover:bg-card-hover hover:text-white transition-all"
+            >
+              Annuler
+            </button>
+            <button
+              onClick={handleEditProject}
+              disabled={!editProject.nom.trim()}
+              className="flex-1 py-2.5 rounded-xl bg-gradient-primary text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+            >
+              Enregistrer
+            </button>
           </div>
         </div>
       </Modal>

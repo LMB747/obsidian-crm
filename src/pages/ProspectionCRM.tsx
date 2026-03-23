@@ -537,9 +537,10 @@ function AnimatedProgressBar({ progress, status }: { progress: number; status: S
 
 // ─── TAB 1 — SCRAPER IA ───────────────────────────────────────────────────────
 const TabScraper: React.FC = () => {
-  const { scrapeJobs, startScrapeJob, deleteScrapeJob } = useProspectionStore();
+  const { scrapeJobs, startScrapeJob, deleteScrapeJob, apiKeys } = useProspectionStore();
   const [modalOpen, setModalOpen] = useState(false);
 
+  const apifyMissing = !apiKeys.apify.trim();
   const activeJobs    = scrapeJobs.filter((j) => j.status === 'running' || j.status === 'pending');
   const completedJobs = scrapeJobs.filter((j) => j.status === 'completed' || j.status === 'error');
 
@@ -550,6 +551,19 @@ const TabScraper: React.FC = () => {
         onClose={() => setModalOpen(false)}
         onLaunch={(config) => startScrapeJob(config)}
       />
+
+      {/* Warning banner when no Apify key */}
+      {apifyMissing && (
+        <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm">
+          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <div>
+            <span className="font-semibold">Mode démo actif — données fictives.</span>{' '}
+            Configurez votre clé API Apify dans l'onglet{' '}
+            <span className="font-semibold text-amber-200">Configuration</span>{' '}
+            pour obtenir de vrais résultats.
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -567,7 +581,7 @@ const TabScraper: React.FC = () => {
           className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-500 text-white font-semibold text-sm transition-all shadow-lg shadow-primary-500/20"
         >
           <Plus className="w-4 h-4" />
-          Nouvelle Campagne de Scraping
+          {apifyMissing ? 'Lancer (mode démo — données fictives)' : 'Nouvelle Campagne de Scraping'}
         </button>
       </div>
 
@@ -1269,16 +1283,21 @@ const TabEnrichissement: React.FC = () => {
 
 // ─── TAB 4 — CONFIGURATION ───────────────────────────────────────────────────
 const TabConfiguration: React.FC = () => {
-  const [apiKeys, setApiKeys] = useState<Record<string, string>>({
-    linkedin: '', twitter: '', google: '', github: '', phantombuster: '', apify: '',
-  });
+  const { apiKeys: storedApiKeys, updateApiKeys } = useProspectionStore();
+  const [localApiKeys, setLocalApiKeys] = useState<Record<string, string>>({ ...storedApiKeys });
   const [scrapingSettings, setScrapingSettings] = useState({ delay: 2, maxResults: 50, respectRobots: true });
   const [aiSettings, setAiSettings] = useState({ model: 'gpt-4o', confidenceThreshold: 75 });
   const [exportSettings, setExportSettings] = useState({ format: 'csv' as 'csv' | 'json' | 'excel', autoExport: false });
   const [notifSettings, setNotifSettings] = useState({ onJobComplete: true, onNewProspect: false, dailyReport: true });
   const [saved, setSaved] = useState(false);
 
-  const handleSave = () => { setSaved(true); setTimeout(() => setSaved(false), 2000); };
+  const apifyMissing = !storedApiKeys.apify.trim();
+
+  const handleSave = () => {
+    updateApiKeys(localApiKeys as Parameters<typeof updateApiKeys>[0]);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
 
   const apiKeyPlatforms = [
     { key: 'linkedin',     label: 'LinkedIn API Key',                placeholder: 'AQXs...' },
@@ -1300,6 +1319,18 @@ const TabConfiguration: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-3xl">
+      {/* Warning: no Apify key */}
+      {apifyMissing && (
+        <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm">
+          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <div>
+            <span className="font-semibold">Sans clé API Apify, le scraper génère des données fictives.</span>{' '}
+            Obtenez votre clé gratuite sur{' '}
+            <a href="https://apify.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-200 transition-colors">apify.com</a>
+          </div>
+        </div>
+      )}
+
       {/* API Keys */}
       <div className="bg-card border border-card-border rounded-2xl p-5">
         <div className="flex items-center gap-3 mb-5">
@@ -1317,8 +1348,8 @@ const TabConfiguration: React.FC = () => {
               <label className="block text-xs font-medium text-slate-400 mb-1.5">{label}</label>
               <input
                 type="password"
-                value={apiKeys[key] ?? ''}
-                onChange={(e) => setApiKeys((prev) => ({ ...prev, [key]: e.target.value }))}
+                value={localApiKeys[key] ?? ''}
+                onChange={(e) => setLocalApiKeys((prev) => ({ ...prev, [key]: e.target.value }))}
                 placeholder={placeholder}
                 className="w-full bg-obsidian-700 border border-card-border rounded-xl px-3 py-2 text-white placeholder-slate-600 text-sm focus:outline-none focus:border-primary-500 transition-colors font-mono"
               />
