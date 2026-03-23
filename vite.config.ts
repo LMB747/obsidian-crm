@@ -28,6 +28,11 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (p) => p.replace(/^\/api\/resend/, ''),
         },
+        '/api/apify': {
+          target: 'https://api.apify.com',
+          changeOrigin: true,
+          rewrite: (p) => p.replace(/^\/api\/apify/, ''),
+        },
       },
     },
     build: {

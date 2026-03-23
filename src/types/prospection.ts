@@ -9,6 +9,9 @@ export type ProspectSource =
 export type ProspectStatus =
   | 'new' | 'enriched' | 'qualified' | 'contacted' | 'imported' | 'excluded';
 
+export type PipelineColumn =
+  | 'identifie' | 'contacte' | 'en_discussion' | 'proposition_envoyee' | 'signe' | 'refuse';
+
 export interface ProspectContact {
   id: string;
   // Identité
@@ -48,6 +51,8 @@ export interface ProspectContact {
   technologies?: string[];
   besoinsDetectes?: string[];  // ex: ['design', 'développement web', 'SEO']
   intentionAchat?: 'faible' | 'moyenne' | 'forte';
+  pipelineColumn?: PipelineColumn;
+  dernierContact?: string;
 }
 
 export interface ScrapeJob {

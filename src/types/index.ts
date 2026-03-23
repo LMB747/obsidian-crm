@@ -103,6 +103,8 @@ export interface Project {
   activityLog: ProjectActivity[];
   objectives?: Objective[];    // objectifs du projet
   subCategories?: ProjectSubCategory[]; // sous-catégories
+  livrables?: Livrable[];      // livrables attendus
+  depensesProjet?: DepenseProjet[]; // dépenses enregistrées
 }
 
 // ─── INVOICE ──────────────────────────────────────────────────────────────────
@@ -463,6 +465,33 @@ export interface Objective {
   taskIds: string[];           // IDs des tâches liées
   progression: number;         // 0-100, calculé auto depuis les tâches
   dateCreation: string;
+}
+
+// ─── LIVRABLE (dans un projet) ──────────────────────────────────────────────
+export type LivrableType = 'post' | 'vidéo' | 'story' | 'reel' | 'article' | 'carrousel' | 'podcast' | 'autre';
+export type LivrableStatut = 'planifié' | 'en production' | 'en revue' | 'validé' | 'publié';
+
+export interface Livrable {
+  id: string;
+  titre: string;
+  type: LivrableType;
+  plateforme: string;
+  datePrevue: string;
+  datePubliee?: string;
+  statut: LivrableStatut;
+  freelancerId?: string;
+  description: string;
+  lienExterne?: string;
+}
+
+// ─── DÉPENSE PROJET ─────────────────────────────────────────────────────────
+export interface DepenseProjet {
+  id: string;
+  description: string;
+  montant: number;
+  date: string;
+  categorie: string;
+  freelancerId?: string;
 }
 
 // ─── SOUS-CATÉGORIE PROJET ───────────────────────────────────────────────────

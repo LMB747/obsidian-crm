@@ -6,10 +6,10 @@ import {
   Edit2, Trash2, Target, ArrowUpRight, BarChart3,
   List, Columns, AlertTriangle, Download, Search, X,
   Activity, MessageSquare, FolderPlus, ArrowRight, Flag, FileText,
-  Crosshair, Layers, Tag
+  Crosshair, Layers, Tag, Package, Wallet
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { Project, ProjectStatus, Task, Freelancer, Objective, ProjectSubCategory } from '../types';
+import { Project, ProjectStatus, Task, Freelancer, Objective, ProjectSubCategory, Livrable, LivrableType, LivrableStatut, DepenseProjet } from '../types';
 import { Badge } from '../components/ui/Badge';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { Modal } from '../components/ui/Modal';
@@ -260,7 +260,7 @@ export const Projects: React.FC = () => {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [addTaskModal, setAddTaskModal] = useState<string | null>(null);
   const [newTask, setNewTask] = useState({ titre: '', description: '', assigneA: '', dateEcheance: '', heuresEstimees: 8, priorite: 'normale' as Task['priorite'], statut: 'todo' as Task['statut'], tags: [] as string[] });
-  const [projectTab, setProjectTab] = useState<Record<string, 'tasks' | 'equipe' | 'objectives' | 'timeline'>>({});
+  const [projectTab, setProjectTab] = useState<Record<string, 'tasks' | 'equipe' | 'objectives' | 'timeline' | 'livrables' | 'budget'>>({});
 
   // Objectives modal
   const [addObjModal, setAddObjModal] = useState<string | null>(null);
@@ -663,6 +663,8 @@ export const Projects: React.FC = () => {
                         { id: 'tasks', label: 'Tâches', icon: CheckSquare },
                         { id: 'objectives', label: 'Objectifs', icon: Crosshair },
                         { id: 'equipe', label: 'Équipe', icon: Users },
+                        { id: 'livrables', label: 'Livrables', icon: Package },
+                        { id: 'budget', label: 'Budget', icon: Wallet },
                         { id: 'timeline', label: 'Timeline', icon: Activity },
                       ] as const).map(tab => (
                         <button
@@ -832,6 +834,217 @@ export const Projects: React.FC = () => {
                         />
                       </div>
                     )}
+
+                    {/* Livrables tab */}
+                    {(projectTab[project.id] ?? 'tasks') === 'livrables' && (
+                      <div className="p-5 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-semibold text-white text-sm flex items-center gap-2">
+                            <Package className="w-4 h-4 text-primary-400" />
+                            Livrables ({(project.livrables || []).length})
+                          </h4>
+                          <button
+                            onClick={() => {
+                              const newLivrable: Livrable = {
+                                id: crypto.randomUUID(),
+                                titre: 'Nouveau livrable',
+                                type: 'post',
+                                plateforme: 'Instagram',
+                                datePrevue: new Date().toISOString().split('T')[0],
+                                statut: 'planifié',
+                                description: '',
+                              };
+                              updateProject(project.id, {
+                                livrables: [...(project.livrables || []), newLivrable],
+                              });
+                            }}
+                            className="flex items-center gap-1 text-xs text-primary-400 hover:text-primary-300 border border-primary-500/30 px-2 py-1 rounded-lg hover:bg-primary-500/10 transition-all"
+                          >
+                            <Plus className="w-3 h-3" /> Ajouter
+                          </button>
+                        </div>
+
+                        {(project.livrables || []).length === 0 ? (
+                          <div className="text-center py-8 text-slate-500">
+                            <Package className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                            <p className="text-sm">Aucun livrable défini</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {(project.livrables || []).map(liv => {
+                              const statusColors: Record<LivrableStatut, string> = {
+                                'planifié': 'bg-slate-500/15 border-slate-500/30 text-slate-400',
+                                'en production': 'bg-primary-500/15 border-primary-500/30 text-primary-400',
+                                'en revue': 'bg-amber-500/15 border-amber-500/30 text-amber-400',
+                                'validé': 'bg-cyan-500/15 border-cyan-500/30 text-cyan-400',
+                                'publié': 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400',
+                              };
+                              const assignedF = freelancers.find(f => f.id === liv.freelancerId);
+                              return (
+                                <div key={liv.id} className="flex items-center gap-3 p-3 rounded-xl bg-obsidian-700 border border-card-border/50 group">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-white">{liv.titre}</p>
+                                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                      <span className="text-xs bg-obsidian-600 text-slate-400 px-1.5 py-0.5 rounded">{liv.type}</span>
+                                      <span className="text-xs text-slate-500">{liv.plateforme}</span>
+                                      {assignedF && <span className="text-xs text-slate-500">· {assignedF.prenom} {assignedF.nom}</span>}
+                                      <span className="text-xs text-slate-500">· {new Date(liv.datePrevue).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</span>
+                                    </div>
+                                  </div>
+                                  <select
+                                    value={liv.statut}
+                                    onChange={(e) => {
+                                      const updated = (project.livrables || []).map(l =>
+                                        l.id === liv.id ? { ...l, statut: e.target.value as LivrableStatut } : l
+                                      );
+                                      updateProject(project.id, { livrables: updated });
+                                    }}
+                                    className={`text-xs px-2 py-1 rounded-lg border cursor-pointer ${statusColors[liv.statut]} bg-transparent`}
+                                  >
+                                    <option value="planifié">Planifié</option>
+                                    <option value="en production">En production</option>
+                                    <option value="en revue">En revue</option>
+                                    <option value="validé">Validé</option>
+                                    <option value="publié">Publié</option>
+                                  </select>
+                                  <button
+                                    onClick={() => {
+                                      updateProject(project.id, {
+                                        livrables: (project.livrables || []).filter(l => l.id !== liv.id),
+                                      });
+                                    }}
+                                    className="text-slate-600 hover:text-accent-red transition-colors opacity-0 group-hover:opacity-100"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Budget tab */}
+                    {(projectTab[project.id] ?? 'tasks') === 'budget' && (() => {
+                      const depenses = project.depensesProjet || [];
+                      const totalDepenses = depenses.reduce((s, d) => s + d.montant, 0);
+                      const restant = project.budget - totalDepenses;
+                      const pctUsed = project.budget > 0 ? Math.round((totalDepenses / project.budget) * 100) : 0;
+                      // Group by freelancer
+                      const byFreelancer: Record<string, number> = {};
+                      depenses.forEach(d => {
+                        const key = d.freelancerId || '__agence__';
+                        byFreelancer[key] = (byFreelancer[key] || 0) + d.montant;
+                      });
+
+                      return (
+                        <div className="p-5 space-y-5">
+                          {/* Budget summary cards */}
+                          <div className="grid grid-cols-4 gap-3">
+                            <div className="bg-obsidian-700 border border-card-border/50 rounded-xl p-3">
+                              <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Budget total</p>
+                              <p className="text-lg font-bold text-white">{project.budget.toLocaleString('fr-FR')} €</p>
+                            </div>
+                            <div className="bg-obsidian-700 border border-card-border/50 rounded-xl p-3">
+                              <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Dépensé</p>
+                              <p className={`text-lg font-bold ${pctUsed > 90 ? 'text-accent-red' : 'text-amber-400'}`}>{totalDepenses.toLocaleString('fr-FR')} €</p>
+                            </div>
+                            <div className="bg-obsidian-700 border border-card-border/50 rounded-xl p-3">
+                              <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Restant</p>
+                              <p className={`text-lg font-bold ${restant < 0 ? 'text-accent-red' : 'text-accent-green'}`}>{restant.toLocaleString('fr-FR')} €</p>
+                            </div>
+                            <div className="bg-obsidian-700 border border-card-border/50 rounded-xl p-3">
+                              <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Utilisation</p>
+                              <p className={`text-lg font-bold ${pctUsed > 90 ? 'text-accent-red' : pctUsed > 70 ? 'text-amber-400' : 'text-accent-green'}`}>{pctUsed}%</p>
+                            </div>
+                          </div>
+
+                          <ProgressBar value={totalDepenses} max={project.budget || 1} color={pctUsed > 90 ? 'orange' : 'green'} size="md" />
+
+                          {/* Breakdown by freelancer */}
+                          {Object.keys(byFreelancer).length > 0 && (
+                            <div>
+                              <h4 className="text-sm font-semibold text-white mb-3">Répartition par prestataire</h4>
+                              <div className="space-y-2">
+                                {Object.entries(byFreelancer).map(([fid, amount]) => {
+                                  const fl = freelancers.find(f => f.id === fid);
+                                  const pct = project.budget > 0 ? Math.round((amount / project.budget) * 100) : 0;
+                                  return (
+                                    <div key={fid} className="flex items-center gap-3 p-2 rounded-lg bg-obsidian-700 border border-card-border/30">
+                                      <div className="flex-1">
+                                        <p className="text-xs text-white font-medium">{fl ? `${fl.prenom} ${fl.nom}` : 'Agence'}</p>
+                                        <div className="h-1.5 rounded-full bg-obsidian-900 mt-1 overflow-hidden">
+                                          <div className="h-full rounded-full bg-gradient-to-r from-primary-600 to-cyan-500" style={{ width: `${pct}%` }} />
+                                        </div>
+                                      </div>
+                                      <span className="text-xs font-semibold text-white">{amount.toLocaleString('fr-FR')} €</span>
+                                      <span className="text-[10px] text-slate-500">{pct}%</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Expense list */}
+                          <div>
+                            <div className="flex items-center justify-between mb-3">
+                              <h4 className="text-sm font-semibold text-white">Dépenses ({depenses.length})</h4>
+                              <button
+                                onClick={() => {
+                                  const newDepense: DepenseProjet = {
+                                    id: crypto.randomUUID(),
+                                    description: 'Nouvelle dépense',
+                                    montant: 0,
+                                    date: new Date().toISOString().split('T')[0],
+                                    categorie: 'Prestation',
+                                  };
+                                  updateProject(project.id, {
+                                    depensesProjet: [...depenses, newDepense],
+                                    depenses: totalDepenses,
+                                  });
+                                }}
+                                className="flex items-center gap-1 text-xs text-primary-400 hover:text-primary-300 border border-primary-500/30 px-2 py-1 rounded-lg hover:bg-primary-500/10 transition-all"
+                              >
+                                <Plus className="w-3 h-3" /> Ajouter
+                              </button>
+                            </div>
+                            {depenses.length === 0 ? (
+                              <div className="text-center py-6 text-slate-500">
+                                <Wallet className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                                <p className="text-sm">Aucune dépense enregistrée</p>
+                              </div>
+                            ) : (
+                              <div className="space-y-1.5">
+                                {depenses.map(dep => (
+                                  <div key={dep.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-obsidian-700 border border-card-border/30 group">
+                                    <Euro className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs text-white font-medium">{dep.description}</p>
+                                      <p className="text-[10px] text-slate-500">
+                                        {dep.categorie} · {new Date(dep.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                                      </p>
+                                    </div>
+                                    <span className="text-xs font-semibold text-amber-400">{dep.montant.toLocaleString('fr-FR')} €</span>
+                                    <button
+                                      onClick={() => {
+                                        const updated = depenses.filter(d => d.id !== dep.id);
+                                        const newTotal = updated.reduce((s, d) => s + d.montant, 0);
+                                        updateProject(project.id, { depensesProjet: updated, depenses: newTotal });
+                                      }}
+                                      className="text-slate-600 hover:text-accent-red transition-colors opacity-0 group-hover:opacity-100"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* Tasks & Milestones tab */}
                     {(projectTab[project.id] ?? 'tasks') === 'tasks' && (

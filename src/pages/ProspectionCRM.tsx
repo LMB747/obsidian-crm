@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Search, Filter, Download, RefreshCw, Globe, Users, Zap, Target,
   ChevronDown, Check, X, Eye, Send, Ban, Brain, Crosshair, Play,
   Clock, CheckCircle2, AlertCircle, TrendingUp, Building2, Mail,
   Phone, ExternalLink, Plus, Trash2, Settings, Key, BarChart2, Star,
-  Loader2, XCircle,
+  Loader2, XCircle, Columns, GripVertical,
 } from 'lucide-react';
-import { ProspectContact, ScrapeJob, ProspectionFilter, ProspectSource, ProspectStatus } from '../types/prospection';
+import { ProspectContact, ScrapeJob, ProspectionFilter, ProspectSource, ProspectStatus, PipelineColumn } from '../types/prospection';
 import { useProspectionStore } from '../store/useProspectionStore';
 
 // ─── Platform config ──────────────────────────────────────────────────────────
@@ -1698,8 +1698,302 @@ function JobsTab() {
   );
 }
 
+// ─── PIPELINE KANBAN TAB ──────────────────────────────────────────────────────
+
+const PIPELINE_COLUMNS: { id: PipelineColumn; label: string; icon: string; color: string; border: string; bg: string }[] = [
+  { id: 'identifie',           label: 'Identifié',           icon: '🔍', color: 'text-blue-400',    border: 'border-blue-500/30',    bg: 'bg-blue-500/5' },
+  { id: 'contacte',            label: 'Contacté',            icon: '📧', color: 'text-cyan-400',    border: 'border-cyan-500/30',    bg: 'bg-cyan-500/5' },
+  { id: 'en_discussion',       label: 'En discussion',       icon: '💬', color: 'text-amber-400',   border: 'border-amber-500/30',   bg: 'bg-amber-500/5' },
+  { id: 'proposition_envoyee', label: 'Proposition envoyée', icon: '📋', color: 'text-purple-400',  border: 'border-purple-500/30',  bg: 'bg-purple-500/5' },
+  { id: 'signe',               label: 'Signé',               icon: '✅', color: 'text-emerald-400', border: 'border-emerald-500/30', bg: 'bg-emerald-500/5' },
+  { id: 'refuse',              label: 'Refusé',              icon: '❌', color: 'text-red-400',     border: 'border-red-500/30',     bg: 'bg-red-500/5' },
+];
+
+function TabPipeline() {
+  const { prospects, updateProspect } = useProspectionStore();
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<PipelineColumn | null>(null);
+  const [selectedProspect, setSelectedProspect] = useState<ProspectContact | null>(null);
+
+  // Group prospects by pipeline column
+  const columns = useMemo(() => {
+    const map: Record<PipelineColumn, ProspectContact[]> = {
+      identifie: [], contacte: [], en_discussion: [],
+      proposition_envoyee: [], signe: [], refuse: [],
+    };
+    prospects.forEach((p) => {
+      const col = p.pipelineColumn || 'identifie';
+      if (map[col]) map[col].push(p);
+    });
+    return map;
+  }, [prospects]);
+
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    setDraggedId(id);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', id);
+  };
+
+  const handleDragOver = (e: React.DragEvent, colId: PipelineColumn) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverCol(colId);
+  };
+
+  const handleDragLeave = () => setDragOverCol(null);
+
+  const handleDrop = (e: React.DragEvent, colId: PipelineColumn) => {
+    e.preventDefault();
+    const id = e.dataTransfer.getData('text/plain') || draggedId;
+    if (id) {
+      updateProspect(id, { pipelineColumn: colId });
+    }
+    setDraggedId(null);
+    setDragOverCol(null);
+  };
+
+  // Add prospect to pipeline
+  const addToPipeline = (prospectId: string) => {
+    updateProspect(prospectId, { pipelineColumn: 'identifie' });
+  };
+
+  // Prospects not yet in pipeline
+  const unassigned = prospects.filter(p => !p.pipelineColumn);
+  const totalInPipeline = prospects.filter(p => p.pipelineColumn).length;
+
+  return (
+    <div className="space-y-5">
+      {/* Pipeline stats */}
+      <div className="grid grid-cols-6 gap-3">
+        {PIPELINE_COLUMNS.map(col => (
+          <div key={col.id} className={`bg-card border ${col.border} rounded-xl p-3 text-center`}>
+            <span className="text-lg">{col.icon}</span>
+            <p className={`text-xl font-bold ${col.color} mt-1`}>{columns[col.id].length}</p>
+            <p className="text-xs text-slate-500 mt-0.5">{col.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Quick add from unassigned */}
+      {unassigned.length > 0 && (
+        <div className="bg-card border border-card-border rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold text-white">
+              {unassigned.length} prospect{unassigned.length > 1 ? 's' : ''} non assigné{unassigned.length > 1 ? 's' : ''} au pipeline
+            </p>
+            <button
+              onClick={() => unassigned.forEach(p => addToPipeline(p.id))}
+              className="text-xs px-3 py-1.5 rounded-lg bg-primary-600 hover:bg-primary-500 text-white font-medium transition-colors"
+            >
+              Tout ajouter
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {unassigned.slice(0, 10).map(p => (
+              <button
+                key={p.id}
+                onClick={() => addToPipeline(p.id)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-obsidian-700 border border-card-border text-xs text-slate-300 hover:border-primary-500/40 hover:text-white transition-all"
+              >
+                <Plus className="w-3 h-3" />
+                {p.prenom} {p.nom}
+              </button>
+            ))}
+            {unassigned.length > 10 && (
+              <span className="text-xs text-slate-500 self-center">+{unassigned.length - 10} autres</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Kanban board */}
+      <div className="grid grid-cols-6 gap-3 min-h-[500px]">
+        {PIPELINE_COLUMNS.map(col => (
+          <div
+            key={col.id}
+            className={`flex flex-col rounded-xl border transition-all ${
+              dragOverCol === col.id
+                ? `${col.border} ${col.bg} ring-1 ring-${col.color.replace('text-', '')}`
+                : 'border-card-border bg-obsidian-800/50'
+            }`}
+            onDragOver={(e) => handleDragOver(e, col.id)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, col.id)}
+          >
+            {/* Column header */}
+            <div className={`flex items-center gap-2 px-3 py-2.5 border-b ${col.border}`}>
+              <span className="text-sm">{col.icon}</span>
+              <span className={`text-xs font-bold uppercase tracking-wider ${col.color}`}>{col.label}</span>
+              <span className="ml-auto text-xs text-slate-500 bg-obsidian-700 px-1.5 py-0.5 rounded-full">
+                {columns[col.id].length}
+              </span>
+            </div>
+
+            {/* Cards */}
+            <div className="flex-1 p-2 space-y-2 overflow-y-auto max-h-[600px]">
+              {columns[col.id].map(prospect => (
+                <div
+                  key={prospect.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, prospect.id)}
+                  onClick={() => setSelectedProspect(prospect)}
+                  className={`group bg-card border border-card-border rounded-lg p-3 cursor-grab active:cursor-grabbing hover:border-primary-500/30 transition-all ${
+                    draggedId === prospect.id ? 'opacity-40' : ''
+                  }`}
+                >
+                  <div className="flex items-start gap-2">
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary-600 to-cyan-600 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
+                      {(prospect.prenom[0] || '').toUpperCase()}{(prospect.nom[0] || '').toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-white truncate">
+                        {prospect.prenom} {prospect.nom}
+                      </p>
+                      {prospect.entreprise && (
+                        <p className="text-[10px] text-slate-500 truncate">{prospect.entreprise}</p>
+                      )}
+                    </div>
+                    <GripVertical className="w-3 h-3 text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                  </div>
+                  {/* Score */}
+                  <div className="flex items-center justify-between mt-2">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                      PLATFORM_CONFIG[prospect.source]?.color || 'bg-slate-600'
+                    } text-white`}>
+                      {PLATFORM_CONFIG[prospect.source]?.label || prospect.source}
+                    </span>
+                    <span className={`text-[10px] font-bold ${getScoreColor(prospect.score)}`}>
+                      {prospect.score}%
+                    </span>
+                  </div>
+                  {prospect.dernierContact && (
+                    <p className="text-[9px] text-slate-600 mt-1.5">
+                      Dernier contact: {new Date(prospect.dernierContact).toLocaleDateString('fr-FR')}
+                    </p>
+                  )}
+                </div>
+              ))}
+
+              {columns[col.id].length === 0 && (
+                <div className="flex flex-col items-center justify-center py-8 text-slate-600">
+                  <span className="text-2xl opacity-30">{col.icon}</span>
+                  <p className="text-[10px] mt-1">Vide</p>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Slide panel for prospect detail */}
+      {selectedProspect && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedProspect(null)} />
+          <div className="relative w-full max-w-md bg-obsidian-800 border-l border-card-border shadow-2xl overflow-y-auto animate-slide-in">
+            <div className="sticky top-0 bg-obsidian-800 border-b border-card-border px-6 py-4 flex items-center justify-between">
+              <h3 className="font-bold text-white text-lg">Détail prospect</h3>
+              <button onClick={() => setSelectedProspect(null)} className="p-2 rounded-lg hover:bg-card text-slate-400 hover:text-white transition-all">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="px-6 py-5 space-y-5">
+              {/* Identity */}
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-primary-600 to-cyan-600 flex items-center justify-center text-white text-lg font-bold">
+                  {(selectedProspect.prenom[0] || '').toUpperCase()}{(selectedProspect.nom[0] || '').toUpperCase()}
+                </div>
+                <div>
+                  <h4 className="text-white font-bold text-lg">{selectedProspect.prenom} {selectedProspect.nom}</h4>
+                  {selectedProspect.entreprise && <p className="text-slate-400 text-sm">{selectedProspect.entreprise}</p>}
+                  {selectedProspect.poste && <p className="text-slate-500 text-xs">{selectedProspect.poste}</p>}
+                </div>
+              </div>
+
+              {/* Pipeline column selector */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Étape pipeline</label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {PIPELINE_COLUMNS.map(col => {
+                    const active = (selectedProspect.pipelineColumn || 'identifie') === col.id;
+                    return (
+                      <button
+                        key={col.id}
+                        onClick={() => {
+                          updateProspect(selectedProspect.id, { pipelineColumn: col.id });
+                          setSelectedProspect({ ...selectedProspect, pipelineColumn: col.id });
+                        }}
+                        className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-medium border transition-all ${
+                          active
+                            ? `${col.bg} ${col.border} ${col.color}`
+                            : 'border-card-border text-slate-500 hover:text-white hover:border-slate-600'
+                        }`}
+                      >
+                        <span className="text-sm">{col.icon}</span>
+                        {col.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Contact info */}
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide">Coordonnées</label>
+                {selectedProspect.email && (
+                  <div className="flex items-center gap-2 text-sm text-slate-300">
+                    <Mail className="w-4 h-4 text-slate-500" /> {selectedProspect.email}
+                  </div>
+                )}
+                {selectedProspect.telephone && (
+                  <div className="flex items-center gap-2 text-sm text-slate-300">
+                    <Phone className="w-4 h-4 text-slate-500" /> {selectedProspect.telephone}
+                  </div>
+                )}
+                {selectedProspect.website && (
+                  <div className="flex items-center gap-2 text-sm text-slate-300">
+                    <Globe className="w-4 h-4 text-slate-500" />
+                    <a href={selectedProspect.website} target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:underline truncate">{selectedProspect.website}</a>
+                  </div>
+                )}
+                {selectedProspect.linkedinUrl && (
+                  <div className="flex items-center gap-2 text-sm text-slate-300">
+                    <ExternalLink className="w-4 h-4 text-slate-500" />
+                    <a href={selectedProspect.linkedinUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline truncate">LinkedIn</a>
+                  </div>
+                )}
+              </div>
+
+              {/* Score & metrics */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-card border border-card-border rounded-xl p-3">
+                  <p className="text-xs text-slate-500 mb-1">Score IA</p>
+                  <p className={`text-2xl font-bold ${getScoreColor(selectedProspect.score)}`}>{selectedProspect.score}</p>
+                </div>
+                {selectedProspect.followers != null && (
+                  <div className="bg-card border border-card-border rounded-xl p-3">
+                    <p className="text-xs text-slate-500 mb-1">Followers</p>
+                    <p className="text-2xl font-bold text-white">{selectedProspect.followers.toLocaleString('fr-FR')}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Notes */}
+              {selectedProspect.notes && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Notes</label>
+                  <p className="text-sm text-slate-300 bg-obsidian-700 rounded-lg p-3 border border-card-border">{selectedProspect.notes}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
-type TabId = 'scraper' | 'prospects' | 'enrichissement' | 'jobs' | 'configuration';
+type TabId = 'scraper' | 'prospects' | 'enrichissement' | 'pipeline' | 'jobs' | 'configuration';
 
 interface TabDef {
   id: TabId;
@@ -1711,6 +2005,7 @@ const TABS: TabDef[] = [
   { id: 'scraper',        label: 'Scraper IA',       Icon: Crosshair },
   { id: 'prospects',      label: 'Prospects',         Icon: Users },
   { id: 'enrichissement', label: 'Enrichissement IA', Icon: Brain },
+  { id: 'pipeline',       label: 'Pipeline',          Icon: Columns },
   { id: 'jobs',           label: 'Jobs',              Icon: Clock },
   { id: 'configuration',  label: 'Configuration',     Icon: Settings },
 ];
@@ -1795,6 +2090,7 @@ const ProspectionCRM: React.FC = () => {
         {activeTab === 'scraper'        && <TabScraper />}
         {activeTab === 'prospects'      && <TabProspects />}
         {activeTab === 'enrichissement' && <TabEnrichissement />}
+        {activeTab === 'pipeline'       && <TabPipeline />}
         {activeTab === 'jobs'           && <JobsTab />}
         {activeTab === 'configuration'  && <TabConfiguration />}
       </div>

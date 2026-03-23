@@ -19,6 +19,7 @@ const Settings        = lazy(() => import('./pages/Settings').then(m => ({ defau
 const Admin           = lazy(() => import('./pages/Admin').then(m => ({ default: m.Admin })));
 const FreelancerPortal = lazy(() => import('./pages/FreelancerPortal').then(m => ({ default: m.FreelancerPortal })));
 const ProspectionCRM  = lazy(() => import('./pages/ProspectionCRM').then(m => ({ default: m.ProspectionCRM })));
+const NotFound        = lazy(() => import('./pages/NotFound').then(m => ({ default: m.NotFound })));
 
 const pageMap: Record<string, React.ComponentType> = {
   dashboard:           Dashboard,
@@ -71,7 +72,7 @@ const App: React.FC = () => {
     }
   }
 
-  const Page = pageMap[activeSection] || Dashboard;
+  const Page = pageMap[activeSection] || NotFound;
   return (
     <Layout>
       <Suspense fallback={<PageSkeleton />}>
