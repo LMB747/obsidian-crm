@@ -7,8 +7,9 @@ import {
   Loader2, XCircle, Columns, GripVertical,
 } from 'lucide-react';
 import { ProspectContact, ScrapeJob, ProspectionFilter, ProspectSource, ProspectStatus, PipelineColumn } from '../types/prospection';
-import { useProspectionStore } from '../store/useProspectionStore';
+import { useProspectionStore, type ScrapingEngine } from '../store/useProspectionStore';
 import { setCustomActorId, getCustomActorId } from '../lib/apifyService';
+import { fetchPhantomAgents, type PhantomAgent } from '../lib/phantombusterService';
 
 // ─── Platform config ──────────────────────────────────────────────────────────
 const PLATFORM_CONFIG: Record<ProspectSource, { label: string; color: string }> = {
@@ -100,16 +101,29 @@ interface ScrapingModalProps {
     sector?: string;
     companySize?: string;
     jobTitle?: string;
+    engine?: ScrapingEngine;
   }) => void;
 }
 
 const ScrapingModal: React.FC<ScrapingModalProps> = ({ isOpen, onClose, onLaunch }) => {
+  const { apiKeys } = useProspectionStore();
   const [selectedPlatforms, setSelectedPlatforms] = useState<ProspectSource[]>(['linkedin']);
   const [keywords, setKeywords] = useState('');
   const [location, setLocation] = useState('');
   const [sector, setSector] = useState('');
   const [companySize, setCompanySize] = useState('');
   const [jobTitle, setJobTitle] = useState('');
+
+  const hasApify = !!apiKeys.apify.trim();
+  const hasPB = !!apiKeys.phantombuster.trim();
+  const defaultEngine: ScrapingEngine | undefined = hasApify ? 'apify' : hasPB ? 'phantombuster' : undefined;
+  const [engine, setEngine] = useState<ScrapingEngine | undefined>(defaultEngine);
+
+  // Sync engine when keys change
+  useEffect(() => {
+    if (hasApify && !engine) setEngine('apify');
+    else if (hasPB && !engine) setEngine('phantombuster');
+  }, [hasApify, hasPB, engine]);
 
   const togglePlatform = (p: ProspectSource) => {
     setSelectedPlatforms((prev) =>
@@ -126,6 +140,7 @@ const ScrapingModal: React.FC<ScrapingModalProps> = ({ isOpen, onClose, onLaunch
       sector: sector.trim() || undefined,
       companySize: companySize.trim() || undefined,
       jobTitle: jobTitle.trim() || undefined,
+      engine,
     });
     onClose();
     setSelectedPlatforms(['linkedin']);
@@ -211,6 +226,46 @@ const ScrapingModal: React.FC<ScrapingModalProps> = ({ isOpen, onClose, onLaunch
             />
             <p className="text-slate-500 text-xs mt-1">Séparez les mots-clés par des virgules</p>
           </div>
+
+          {/* Engine selector */}
+          {(hasApify || hasPB) && (
+            <div>
+              <label className="block text-sm font-semibold text-white mb-2">Moteur de scraping</label>
+              <div className="flex gap-2">
+                {hasApify && (
+                  <button
+                    onClick={() => setEngine('apify')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${
+                      engine === 'apify'
+                        ? 'border-primary-500 bg-primary-500/10 text-primary-300'
+                        : 'border-card-border bg-card text-slate-400 hover:border-slate-500'
+                    }`}
+                  >
+                    <Zap className="w-4 h-4" />
+                    Apify
+                  </button>
+                )}
+                {hasPB && (
+                  <button
+                    onClick={() => setEngine('phantombuster')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${
+                      engine === 'phantombuster'
+                        ? 'border-cyan-500 bg-cyan-500/10 text-cyan-300'
+                        : 'border-card-border bg-card text-slate-400 hover:border-slate-500'
+                    }`}
+                  >
+                    <Brain className="w-4 h-4" />
+                    PhantomBuster
+                  </button>
+                )}
+              </div>
+              {engine === 'phantombuster' && (
+                <p className="text-xs text-cyan-400/70 mt-1.5">
+                  Utilise votre Phantom configuré — assurez-vous d'avoir renseigné l'Agent ID dans Configuration.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Filters grid */}
           <div className="grid grid-cols-2 gap-4">
@@ -542,7 +597,7 @@ const TabScraper: React.FC = () => {
   const { scrapeJobs, startScrapeJob, deleteScrapeJob, apiKeys } = useProspectionStore();
   const [modalOpen, setModalOpen] = useState(false);
 
-  const apifyMissing = !apiKeys.apify.trim();
+  const hasAnyKey = !!apiKeys.apify.trim() || !!apiKeys.phantombuster.trim();
   const activeJobs    = scrapeJobs.filter((j) => j.status === 'running' || j.status === 'pending');
   const completedJobs = scrapeJobs.filter((j) => j.status === 'completed' || j.status === 'error');
 
@@ -554,13 +609,13 @@ const TabScraper: React.FC = () => {
         onLaunch={(config) => startScrapeJob(config)}
       />
 
-      {/* Warning banner when no Apify key */}
-      {apifyMissing && (
+      {/* Warning banner when no API key */}
+      {!hasAnyKey && (
         <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm">
           <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
           <div>
             <span className="font-semibold">Mode démo actif — données fictives.</span>{' '}
-            Configurez votre clé API Apify dans l'onglet{' '}
+            Configurez votre clé API (Apify ou PhantomBuster) dans l'onglet{' '}
             <span className="font-semibold text-amber-200">Configuration</span>{' '}
             pour obtenir de vrais résultats.
           </div>
@@ -583,7 +638,7 @@ const TabScraper: React.FC = () => {
           className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-500 text-white font-semibold text-sm transition-all shadow-lg shadow-primary-500/20"
         >
           <Plus className="w-4 h-4" />
-          {apifyMissing ? 'Lancer (mode démo — données fictives)' : 'Nouvelle Campagne de Scraping'}
+          {!hasAnyKey ? 'Lancer (mode démo — données fictives)' : 'Nouvelle Campagne de Scraping'}
         </button>
       </div>
 
@@ -1292,9 +1347,12 @@ const EMAIL_TYPE_LABELS: Record<string, string> = {
 };
 
 const TabConfiguration: React.FC = () => {
-  const { apiKeys: storedApiKeys, updateApiKeys, emailTemplates, addEmailTemplate, updateEmailTemplate, deleteEmailTemplate } = useProspectionStore();
+  const { apiKeys: storedApiKeys, updateApiKeys, emailTemplates, addEmailTemplate, updateEmailTemplate, deleteEmailTemplate, phantomAgentId, setPhantomAgentId } = useProspectionStore();
   const [localApiKeys, setLocalApiKeys] = useState<Record<string, string>>({ ...storedApiKeys });
   const [customActor, setCustomActor] = useState(getCustomActorId());
+  const [localPhantomAgentId, setLocalPhantomAgentId] = useState(phantomAgentId);
+  const [phantomAgents, setPhantomAgents] = useState<PhantomAgent[]>([]);
+  const [loadingPhantoms, setLoadingPhantoms] = useState(false);
   const [scrapingSettings, setScrapingSettings] = useState({ delay: 2, maxResults: 50, respectRobots: true });
   const [aiSettings, setAiSettings] = useState({ model: 'gpt-4o', confidenceThreshold: 75 });
   const [exportSettings, setExportSettings] = useState({ format: 'csv' as 'csv' | 'json' | 'excel', autoExport: false });
@@ -1304,13 +1362,27 @@ const TabConfiguration: React.FC = () => {
   const [newTplOpen, setNewTplOpen] = useState(false);
   const [newTpl, setNewTpl] = useState({ nom: '', sujet: '', corps: '', type: 'premier_contact' as string });
 
-  const apifyMissing = !storedApiKeys.apify.trim();
+  const hasAnyKey = !!storedApiKeys.apify.trim() || !!storedApiKeys.phantombuster.trim();
 
   const handleSave = () => {
     updateApiKeys(localApiKeys as Parameters<typeof updateApiKeys>[0]);
     setCustomActorId(customActor);
+    setPhantomAgentId(localPhantomAgentId);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleFetchPhantoms = async () => {
+    const key = localApiKeys.phantombuster?.trim();
+    if (!key) return;
+    setLoadingPhantoms(true);
+    const { agents, error } = await fetchPhantomAgents(key);
+    setLoadingPhantoms(false);
+    if (error) {
+      alert(`Erreur : ${error}`);
+      return;
+    }
+    setPhantomAgents(agents);
   };
 
   const apiKeyPlatforms = [
@@ -1329,14 +1401,16 @@ const TabConfiguration: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      {/* Warning: no Apify key */}
-      {apifyMissing && (
+      {/* Warning: no API key */}
+      {!hasAnyKey && (
         <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm">
           <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
           <div>
             <span className="font-semibold">Mode Démo actif — le scraper génère des données fictives réalistes.</span>{' '}
-            Pour du scraping réel, obtenez votre clé gratuite sur{' '}
+            Pour du scraping réel, obtenez votre clé sur{' '}
             <a href="https://apify.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-200 transition-colors">apify.com</a>
+            {' '}ou{' '}
+            <a href="https://phantombuster.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-200 transition-colors">phantombuster.com</a>
           </div>
         </div>
       )}
@@ -1367,10 +1441,10 @@ const TabConfiguration: React.FC = () => {
           ))}
         </div>
 
-        {/* Actor ID personnalisé */}
+        {/* Actor ID personnalisé (Apify) */}
         <div className="mt-4 pt-4 border-t border-card-border">
           <label className="block text-xs font-medium text-slate-400 mb-1.5">
-            Actor ID personnalisé (optionnel)
+            Apify — Actor ID personnalisé (optionnel)
           </label>
           <input
             type="text"
@@ -1382,6 +1456,55 @@ const TabConfiguration: React.FC = () => {
           <p className="text-xs text-slate-500 mt-1">
             Renseignez l'ID d'un acteur Apify spécifique pour remplacer le scraper par défaut (Google Search).
           </p>
+        </div>
+
+        {/* PhantomBuster Agent ID */}
+        <div className="mt-4 pt-4 border-t border-card-border">
+          <label className="block text-xs font-medium text-slate-400 mb-1.5">
+            PhantomBuster — Agent ID du Phantom
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={localPhantomAgentId}
+              onChange={(e) => setLocalPhantomAgentId(e.target.value)}
+              placeholder="ex: 1234567890123456"
+              className="flex-1 bg-obsidian-700 border border-card-border rounded-xl px-3 py-2 text-white placeholder-slate-600 text-sm focus:outline-none focus:border-cyan-500 transition-colors font-mono"
+            />
+            {localApiKeys.phantombuster?.trim() && (
+              <button
+                onClick={handleFetchPhantoms}
+                disabled={loadingPhantoms}
+                className="px-3 py-2 rounded-xl bg-cyan-600/20 border border-cyan-500/30 text-cyan-300 text-xs font-medium hover:bg-cyan-600/30 transition-all disabled:opacity-50 whitespace-nowrap"
+              >
+                {loadingPhantoms ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Récupérer mes Phantoms'}
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-slate-500 mt-1">
+            ID du Phantom à lancer. Cliquez sur « Récupérer mes Phantoms » pour voir la liste.
+          </p>
+
+          {/* Liste des Phantoms disponibles */}
+          {phantomAgents.length > 0 && (
+            <div className="mt-3 space-y-1.5 max-h-40 overflow-y-auto">
+              <p className="text-xs font-medium text-slate-400 mb-1">{phantomAgents.length} Phantom(s) trouvé(s) :</p>
+              {phantomAgents.map((agent) => (
+                <button
+                  key={agent.id}
+                  onClick={() => setLocalPhantomAgentId(agent.id)}
+                  className={`w-full text-left px-3 py-2 rounded-lg border text-xs transition-all ${
+                    localPhantomAgentId === agent.id
+                      ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-300'
+                      : 'border-card-border bg-obsidian-700 text-slate-300 hover:border-slate-500'
+                  }`}
+                >
+                  <span className="font-medium">{agent.name}</span>
+                  <span className="text-slate-500 ml-2 font-mono">#{agent.id}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

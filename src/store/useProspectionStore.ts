@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { ProspectContact, ScrapeJob, ProspectSource, ProspectionFilter, EmailTemplate } from '../types/prospection';
 import { useStore } from './useStore';
 import { startApifyRun, checkApifyRun, getApifyResults, PLATFORM_ACTORS } from '../lib/apifyService';
+import { launchPhantom, checkPhantomStatus, getPhantomResults } from '../lib/phantombusterService';
 
 // ─── Default Filters ───────────────────────────────────────────────────────────
 const defaultFilters: ProspectionFilter = {
@@ -23,6 +24,8 @@ export interface ProspectionApiKeys {
   phantombuster: string;
 }
 
+export type ScrapingEngine = 'apify' | 'phantombuster';
+
 interface ProspectionStore {
   prospects: ProspectContact[];
   scrapeJobs: ScrapeJob[];
@@ -30,9 +33,11 @@ interface ProspectionStore {
   selectedProspects: string[];
   apiKeys: ProspectionApiKeys;
   emailTemplates: EmailTemplate[];
+  phantomAgentId: string; // ID du Phantom à lancer (configuré par l'utilisateur)
 
   // API key action
   updateApiKeys: (keys: Partial<ProspectionApiKeys>) => void;
+  setPhantomAgentId: (id: string) => void;
 
   // Email template actions
   addEmailTemplate: (tpl: Omit<EmailTemplate, 'id'>) => void;
@@ -72,6 +77,7 @@ interface ProspectionStore {
     sector?: string;
     companySize?: string;
     jobTitle?: string;
+    engine?: ScrapingEngine;
   }) => void;
 }
 
@@ -83,6 +89,7 @@ export const useProspectionStore = create<ProspectionStore>()(
       filters: defaultFilters,
       selectedProspects: [],
       apiKeys: { apify: '', phantombuster: '' },
+      phantomAgentId: '',
       emailTemplates: [
         { id: 'tpl-1', nom: 'Premier contact', type: 'premier_contact', sujet: 'Collaboration {{PLATEFORME}} — {{NOM_AGENCE}}', corps: 'Bonjour {{PRENOM}},\n\nJe me permets de vous contacter car votre travail chez {{ENTREPRISE}} a retenu notre attention.\n\nChez {{NOM_AGENCE}}, nous accompagnons des entreprises comme la vôtre en stratégie digitale et marketing.\n\nSeriez-vous disponible pour un échange de 15 minutes cette semaine ?\n\nBien cordialement,\n{{NOM_AGENCE}}' },
         { id: 'tpl-2', nom: 'Relance', type: 'relance', sujet: 'Suite à mon message — {{NOM_AGENCE}}', corps: 'Bonjour {{PRENOM}},\n\nJe me permets de revenir vers vous suite à mon précédent message.\n\nJe serais ravi de pouvoir échanger avec vous sur les besoins de {{ENTREPRISE}} en termes de stratégie digitale.\n\nÊtes-vous disponible cette semaine pour un court appel ?\n\nCordialement,\n{{NOM_AGENCE}}' },
@@ -132,6 +139,8 @@ export const useProspectionStore = create<ProspectionStore>()(
 
       updateApiKeys: (keys) =>
         set((state) => ({ apiKeys: { ...state.apiKeys, ...keys } })),
+
+      setPhantomAgentId: (id) => set({ phantomAgentId: id.trim() }),
 
       // ─── Job Actions ──────────────────────────────────────────────────────
       addScrapeJob: (job) =>
@@ -212,7 +221,7 @@ export const useProspectionStore = create<ProspectionStore>()(
 
       // ─── Start Scrape Job ─────────────────────────────────────────────────
       startScrapeJob: (config) => {
-        const { apiKeys } = useProspectionStore.getState();
+        const { apiKeys, phantomAgentId } = useProspectionStore.getState();
         const jobId = uuidv4();
         const job: ScrapeJob = {
           id: jobId,
@@ -230,8 +239,16 @@ export const useProspectionStore = create<ProspectionStore>()(
 
         set((state) => ({ scrapeJobs: [job, ...state.scrapeJobs] }));
 
-        // Mode Démo (par défaut) : pas de clé Apify → données fictives réalistes
-        if (!apiKeys.apify.trim()) {
+        // Déterminer le moteur : choix explicite > clé disponible > démo
+        const engine: ScrapingEngine | 'demo' =
+          config.engine
+            ? config.engine
+            : apiKeys.apify.trim() ? 'apify'
+            : apiKeys.phantombuster.trim() ? 'phantombuster'
+            : 'demo';
+
+        // ── Mode Démo ──────────────────────────────────────────────────────
+        if (engine === 'demo') {
           const totalDuration = 4000 + Math.random() * 3000;
           const intervalMs = 200;
           const steps = Math.floor(totalDuration / intervalMs);
@@ -279,7 +296,109 @@ export const useProspectionStore = create<ProspectionStore>()(
           return;
         }
 
-        // Mode Réel — Apify scraping via proxy
+        // ── Mode PhantomBuster ─────────────────────────────────────────────
+        if (engine === 'phantombuster') {
+          const pbKey = apiKeys.phantombuster.trim();
+          const agentId = phantomAgentId;
+
+          if (!agentId) {
+            useProspectionStore.getState().updateScrapeJob(jobId, {
+              status: 'error',
+              errorMessage: 'Aucun Phantom Agent ID configuré. Allez dans Configuration → PhantomBuster Agent ID.',
+            });
+            return;
+          }
+
+          void (async () => {
+            const TIMEOUT_MS = 120_000; // 2 min pour PhantomBuster (plus lent)
+            const startTime = Date.now();
+
+            try {
+              // Lancer le Phantom avec les arguments de recherche
+              const argument: Record<string, unknown> = {
+                search: config.keywords.join(', '),
+                numberOfProfiles: 30,
+              };
+              if (config.location) argument.location = config.location;
+              if (config.sector) argument.category = config.sector;
+              if (config.jobTitle) argument.jobTitle = config.jobTitle;
+
+              const { containerId, error: launchError } = await launchPhantom(pbKey, agentId, argument);
+              if (launchError || !containerId) {
+                useProspectionStore.getState().updateScrapeJob(jobId, {
+                  status: 'error',
+                  errorMessage: `PhantomBuster : ${launchError || 'Pas de container ID'}`,
+                });
+                return;
+              }
+
+              useProspectionStore.getState().updateScrapeJob(jobId, { progress: 10 });
+
+              // Polling
+              const poll = async () => {
+                const stillRunning =
+                  useProspectionStore.getState().scrapeJobs.find((j) => j.id === jobId)?.status === 'running';
+                if (!stillRunning) return;
+
+                if (Date.now() - startTime > TIMEOUT_MS) {
+                  // Tenter de récupérer des résultats partiels
+                  const results = await getPhantomResults(pbKey, containerId, config.platforms[0] || 'other');
+                  if (results.length > 0) {
+                    useProspectionStore.getState().addProspects(results);
+                    useProspectionStore.getState().updateScrapeJob(jobId, {
+                      status: 'completed', progress: 100, resultsCount: results.length,
+                      dateCompleted: new Date().toISOString(),
+                    });
+                  } else {
+                    useProspectionStore.getState().updateScrapeJob(jobId, {
+                      status: 'error', progress: 100,
+                      errorMessage: 'Timeout (2min) — aucun résultat. Vérifiez que votre Phantom est bien configuré.',
+                    });
+                  }
+                  return;
+                }
+
+                const { status, error: statusError } = await checkPhantomStatus(pbKey, containerId);
+
+                if (status === 'error') {
+                  useProspectionStore.getState().updateScrapeJob(jobId, {
+                    status: 'error',
+                    errorMessage: `PhantomBuster : ${statusError || 'Le Phantom a échoué'}`,
+                  });
+                  return;
+                }
+
+                if (status === 'finished') {
+                  const results = await getPhantomResults(pbKey, containerId, config.platforms[0] || 'other');
+                  useProspectionStore.getState().addProspects(results);
+                  useProspectionStore.getState().updateScrapeJob(jobId, {
+                    status: 'completed',
+                    progress: 100,
+                    resultsCount: results.length,
+                    dateCompleted: new Date().toISOString(),
+                  });
+                  return;
+                }
+
+                // Toujours en cours → incrémenter la progress bar
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(90, Math.round((elapsed / TIMEOUT_MS) * 90));
+                useProspectionStore.getState().updateScrapeJob(jobId, { progress });
+                setTimeout(poll, 5000);
+              };
+
+              setTimeout(poll, 5000);
+            } catch (err: unknown) {
+              useProspectionStore.getState().updateScrapeJob(jobId, {
+                status: 'error',
+                errorMessage: `PhantomBuster : ${String(err)}`,
+              });
+            }
+          })();
+          return;
+        }
+
+        // ── Mode Apify ─────────────────────────────────────────────────────
         const apifyKey = apiKeys.apify.trim();
         const keywordsStr = config.keywords.join(' ');
         const scrapeInput = {
@@ -302,11 +421,10 @@ export const useProspectionStore = create<ProspectionStore>()(
         }
 
         void (async () => {
-          const TIMEOUT_MS = 60_000; // 60 secondes max
+          const TIMEOUT_MS = 60_000;
           const startTime = Date.now();
 
           try {
-            // Lancer un run par plateforme
             const runEntries: Array<{ platform: ProspectSource; runId: string }> = [];
             const errors: string[] = [];
 
@@ -330,14 +448,12 @@ export const useProspectionStore = create<ProspectionStore>()(
               return;
             }
 
-            // Polling avec timeout de 60s
             const totalRuns = runEntries.length;
             const poll = async () => {
               const stillRunning =
                 useProspectionStore.getState().scrapeJobs.find((j) => j.id === jobId)?.status === 'running';
               if (!stillRunning) return;
 
-              // Timeout → récupérer ce qu'on a et terminer
               if (Date.now() - startTime > TIMEOUT_MS) {
                 const allProspects: ProspectContact[] = [];
                 for (const { platform, runId } of runEntries) {
@@ -375,7 +491,6 @@ export const useProspectionStore = create<ProspectionStore>()(
                 return;
               }
 
-              // Collecter les résultats des runs réussis
               const allProspects: ProspectContact[] = [];
               for (let i = 0; i < runEntries.length; i++) {
                 if (statuses[i].status === 'SUCCEEDED') {
@@ -400,7 +515,7 @@ export const useProspectionStore = create<ProspectionStore>()(
             useProspectionStore.getState().updateScrapeJob(jobId, {
               status: 'error',
               errorMessage: isNetworkError
-                ? 'Erreur réseau — le proxy Apify est inaccessible. Vérifiez que Netlify Dev est lancé (npx netlify dev) ou déployez sur Netlify.'
+                ? 'Erreur réseau — le proxy est inaccessible. Déployez sur Netlify ou lancez npx netlify dev.'
                 : `Erreur Apify : ${message}`,
             });
           }
@@ -414,6 +529,7 @@ export const useProspectionStore = create<ProspectionStore>()(
         scrapeJobs: state.scrapeJobs,
         filters: state.filters,
         apiKeys: state.apiKeys,
+        phantomAgentId: state.phantomAgentId,
       }),
     }
   )
