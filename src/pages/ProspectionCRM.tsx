@@ -1314,12 +1314,8 @@ const TabConfiguration: React.FC = () => {
   };
 
   const apiKeyPlatforms = [
-    { key: 'linkedin',     label: 'LinkedIn API Key',                placeholder: 'AQXs...' },
-    { key: 'twitter',      label: 'Twitter / X Bearer Token',        placeholder: 'AAAA...' },
-    { key: 'google',       label: 'Google Maps API Key',             placeholder: 'AIzaSy...' },
-    { key: 'github',       label: 'GitHub Personal Access Token',    placeholder: 'ghp_...' },
-    { key: 'phantombuster',label: 'PhantomBuster API Key',           placeholder: 'xxxxxxxxxx' },
     { key: 'apify',        label: 'Apify API Token',                 placeholder: 'apify_api_...' },
+    { key: 'phantombuster',label: 'PhantomBuster API Key',           placeholder: 'xxxxxxxxxx' },
   ];
 
   const Toggle = ({ value, onChange }: { value: boolean; onChange: () => void }) => (

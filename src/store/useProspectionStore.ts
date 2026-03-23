@@ -20,11 +20,6 @@ const defaultFilters: ProspectionFilter = {
 // ─── Store Interface ───────────────────────────────────────────────────────────
 export interface ProspectionApiKeys {
   apify: string;
-  hunter: string;
-  linkedin: string;
-  twitter: string;
-  google: string;
-  github: string;
   phantombuster: string;
 }
 
@@ -87,7 +82,7 @@ export const useProspectionStore = create<ProspectionStore>()(
       scrapeJobs: [],
       filters: defaultFilters,
       selectedProspects: [],
-      apiKeys: { apify: '', hunter: '', linkedin: '', twitter: '', google: '', github: '', phantombuster: '' },
+      apiKeys: { apify: '', phantombuster: '' },
       emailTemplates: [
         { id: 'tpl-1', nom: 'Premier contact', type: 'premier_contact', sujet: 'Collaboration {{PLATEFORME}} — {{NOM_AGENCE}}', corps: 'Bonjour {{PRENOM}},\n\nJe me permets de vous contacter car votre travail chez {{ENTREPRISE}} a retenu notre attention.\n\nChez {{NOM_AGENCE}}, nous accompagnons des entreprises comme la vôtre en stratégie digitale et marketing.\n\nSeriez-vous disponible pour un échange de 15 minutes cette semaine ?\n\nBien cordialement,\n{{NOM_AGENCE}}' },
         { id: 'tpl-2', nom: 'Relance', type: 'relance', sujet: 'Suite à mon message — {{NOM_AGENCE}}', corps: 'Bonjour {{PRENOM}},\n\nJe me permets de revenir vers vous suite à mon précédent message.\n\nJe serais ravi de pouvoir échanger avec vous sur les besoins de {{ENTREPRISE}} en termes de stratégie digitale.\n\nÊtes-vous disponible cette semaine pour un court appel ?\n\nCordialement,\n{{NOM_AGENCE}}' },

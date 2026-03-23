@@ -144,20 +144,31 @@ function buildActorInput(platform: ProspectSource, input: ScrapeInput): Record<s
   };
 }
 
-// ─── API Calls (via Netlify Function proxy) ───────────────────────────────────
+// ─── API Calls (appel direct à l'API Apify — CORS supporté) ────────────────
 
-const PROXY_URL = '/.netlify/functions/apify-proxy';
+const APIFY_BASE = 'https://api.apify.com/v2';
 
-async function callProxy(body: Record<string, unknown>): Promise<{ ok: boolean; data: unknown; error?: string }> {
+async function apifyFetch(
+  url: string,
+  apiKey: string,
+  options: { method?: string; body?: string } = {}
+): Promise<{ ok: boolean; data: unknown; error?: string }> {
   try {
-    const res = await fetch(PROXY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+    const res = await fetch(url, {
+      method: options.method || 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: options.body,
     });
     const data = await res.json();
     if (!res.ok) {
-      return { ok: false, data: null, error: (data as Record<string, string>)?.error || `HTTP ${res.status}` };
+      const errField = (data as Record<string, unknown>)?.error;
+      const msg = (typeof errField === 'object' && errField && 'message' in errField)
+        ? String((errField as Record<string, unknown>).message)
+        : (typeof errField === 'string' ? errField : `HTTP ${res.status}`);
+      return { ok: false, data: null, error: String(msg) };
     }
     return { ok: true, data };
   } catch (err) {
@@ -178,7 +189,11 @@ export async function startApifyRun(
   }
 
   const actorInput = buildActorInput(platform, input);
-  const result = await callProxy({ action: 'start', apiKey, actor, input: actorInput });
+  const url = `${APIFY_BASE}/acts/${actor}/runs`;
+  const result = await apifyFetch(url, apiKey, {
+    method: 'POST',
+    body: JSON.stringify(actorInput),
+  });
 
   if (!result.ok || result.error) {
     return { runId: '', error: result.error || 'Impossible de démarrer le run Apify' };
@@ -197,7 +212,8 @@ export async function checkApifyRun(
   apiKey: string,
   runId: string
 ): Promise<{ status: 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'ABORTED' | 'TIMED-OUT'; error?: string }> {
-  const result = await callProxy({ action: 'status', apiKey, runId });
+  const url = `${APIFY_BASE}/actor-runs/${runId}`;
+  const result = await apifyFetch(url, apiKey);
 
   if (!result.ok || result.error) {
     return { status: 'FAILED', error: result.error };
@@ -216,7 +232,8 @@ export async function getApifyResults(
   runId: string,
   platform: ProspectSource
 ): Promise<ProspectContact[]> {
-  const result = await callProxy({ action: 'results', apiKey, runId });
+  const url = `${APIFY_BASE}/actor-runs/${runId}/dataset/items?limit=100&clean=true`;
+  const result = await apifyFetch(url, apiKey);
 
   if (!result.ok || !Array.isArray(result.data)) {
     return [];
