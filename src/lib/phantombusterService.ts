@@ -36,7 +36,7 @@ export interface PhantomContainer {
 
 // ─── API Calls ──────────────────────────────────────────────────────────────
 
-const PROXY_URL = '/.netlify/functions/phantombuster-proxy';
+const PROXY_URL = '/api/phantombuster-proxy';
 const PB_BASE = 'https://api.phantombuster.com/api/v2';
 
 async function callProxy(body: Record<string, unknown>): Promise<{ ok: boolean; data: unknown; error?: string }> {

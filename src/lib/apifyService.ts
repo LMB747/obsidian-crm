@@ -148,7 +148,7 @@ function buildActorInput(platform: ProspectSource, input: ScrapeInput): Record<s
 // Stratégie : Netlify Function proxy en priorité (prod),
 // fallback sur appel direct avec ?token= (dev local / si proxy indisponible)
 
-const PROXY_URL = '/.netlify/functions/apify-proxy';
+const PROXY_URL = '/api/apify-proxy';
 const APIFY_BASE = 'https://api.apify.com/v2';
 
 // Encode l'actor ID pour les URLs (apify/google-search-scraper → apify~google-search-scraper)
