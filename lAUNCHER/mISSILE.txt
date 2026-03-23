@@ -1,0 +1,3 @@
+cd "C:/Users/benig/Desktop/Snooze code"
+npm run dev
+# → http://localhost:5174

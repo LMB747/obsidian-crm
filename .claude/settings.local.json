@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(where node:*)",
+      "Bash(where npm:*)",
+      "Read(//c/Program Files/nodejs/**)",
+      "Bash(cp \"C:/Users/benig/Desktop/Obsidian/Facture_OBSIDIAN_Pagination_v2.html\" \"C:/Users/benig/Desktop/Snooze code/public/templates/facture.html\")",
+      "Bash(cp \"C:/Users/benig/Desktop/Obsidian/Devis_OBSIDIAN_Pagination_v2.html\" \"C:/Users/benig/Desktop/Snooze code/public/templates/devis.html\")",
+      "Bash(cp \"C:/Users/benig/Desktop/Obsidian/Contrat-Obsidian-v8-PRINT-OPTIMIZED-EXPORT.html\" \"C:/Users/benig/Desktop/Snooze code/public/templates/contrat.html\")",
+      "Bash(node node_modulestypescriptbintsc --noEmit)",
+      "Bash(\"C:\\\\Program Files\\\\nodejs\\\\node.exe\" \"node_modules\\\\typescript\\\\bin\\\\tsc\" --noEmit)",
+      "Bash(\"C:\\\\Program Files\\\\nodejs\\\\node.exe\" \"node_modules\\\\vite\\\\bin\\\\vite.js\" build)",
+      "Bash(echo \"Exit code: $?\")",
+      "Read(//c/Users/benig/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/4f2dec4e-b565-48e7-a9bc-3425e3f83cc9/1f194286-ef89-4506-b015-e67ca0110dcb/skills/docx/**)",
+      "Bash(pandoc \"C:\\\\Users\\\\benig\\\\Desktop\\\\Obsidian\\\\Audit CRM\\\\audit-obsidian-crm.docx\" -t markdown)",
+      "Bash(python scripts/office/unpack.py \"C:\\\\Users\\\\benig\\\\Desktop\\\\Obsidian\\\\Audit CRM\\\\audit-obsidian-crm.docx\" \"C:\\\\Users\\\\benig\\\\Desktop\\\\Obsidian\\\\Audit CRM\\\\unpacked\")",
+      "Bash(pip install:*)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''''DEPS:'''', list\\(d.get\\(''''dependencies'''',{}\\).keys\\(\\)\\)\\); print\\(''''DEVDEPS:'''', list\\(d.get\\(''''devDependencies'''',{}\\).keys\\(\\)\\)\\)\")",
+      "Bash(python scripts/office/unpack.py \"C:\\\\Users\\\\benig\\\\Desktop\\\\Obsidian\\\\Audit CRM\\\\media-buying-spec.docx\" \"C:\\\\Users\\\\benig\\\\Desktop\\\\Obsidian\\\\Audit CRM\\\\mb-unpacked\")"
+    ]
+  }
+}
