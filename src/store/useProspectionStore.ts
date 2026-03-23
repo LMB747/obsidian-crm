@@ -50,6 +50,8 @@ interface ProspectionStore {
   addScrapeJob: (job: ScrapeJob) => void;
   updateScrapeJob: (id: string, updates: Partial<ScrapeJob>) => void;
   deleteScrapeJob: (id: string) => void;
+  clearEmptyJobs: () => void;
+  clearAllJobs: () => void;
 
   // Filter actions
   setFilters: (filters: Partial<ProspectionFilter>) => void;
@@ -136,6 +138,13 @@ export const useProspectionStore = create<ProspectionStore>()(
         set((state) => ({
           scrapeJobs: state.scrapeJobs.filter((j) => j.id !== id),
         })),
+
+      clearEmptyJobs: () =>
+        set((state) => ({
+          scrapeJobs: state.scrapeJobs.filter(j => j.resultsCount > 0 || j.status === 'running'),
+        })),
+
+      clearAllJobs: () => set({ scrapeJobs: [] }),
 
       // ─── Filter Actions ───────────────────────────────────────────────────
       setFilters: (filters) =>

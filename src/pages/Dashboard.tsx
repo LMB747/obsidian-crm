@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import {
   Users, FolderKanban, Euro, Clock,
   Moon, AlertCircle, CheckCircle2, Briefcase,
-  ArrowUpRight, Activity, Zap, FilePlus2, FileText, Timer, AlertTriangle
+  ArrowUpRight, Activity, Zap, FilePlus2, FileText, Timer, AlertTriangle, TrendingUp
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis,
@@ -12,7 +12,6 @@ import { useStore, selectDashboardStats } from '../store/useStore';
 import { StatCard } from '../components/ui/StatCard';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { Badge } from '../components/ui/Badge';
-import { mockMonthlyRevenue } from '../data/mockData';
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
@@ -93,19 +92,21 @@ export const Dashboard: React.FC = () => {
   const snoozeLastMonth = snoozeSubscriptions.filter(s => s.statut === 'actif' && s.dateDebut.startsWith(lastMonthKey)).length
   const snoozeTrend = snoozeLastMonth > 0 ? Math.round(((snoozeActifsCount - snoozeLastMonth) / snoozeLastMonth) * 100) : snoozeActifsCount > 0 ? 100 : 0
 
-  // Graphe revenus : données mock + dernier mois patché avec vraies factures
+  // Graphe revenus : 6 derniers mois depuis les vraies factures
   const monthlyChartData = useMemo(() => {
-    const currentMonthKey = new Date().toISOString().slice(0, 7);
-    const realRevenuThisMonth = invoices
-      .filter(inv => inv.statut === 'payée' && (inv.datePaiement ?? inv.dateEmission).startsWith(currentMonthKey))
-      .reduce((sum, inv) => sum + inv.total, 0);
-    return mockMonthlyRevenue.map((m, i) => {
-      if (i === mockMonthlyRevenue.length - 1) {
-        const revenu = realRevenuThisMonth || m.revenu;
-        return { ...m, revenu, benefice: revenu - m.depenses };
-      }
-      return m;
-    });
+    const months: { mois: string; revenu: number; depenses: number; benefice: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(1);
+      d.setMonth(d.getMonth() - i);
+      const key = d.toISOString().slice(0, 7);
+      const label = d.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' });
+      const revenu = invoices
+        .filter(inv => inv.statut === 'payée' && (inv.datePaiement ?? inv.dateEmission).startsWith(key))
+        .reduce((sum, inv) => sum + inv.total, 0);
+      months.push({ mois: label, revenu, depenses: 0, benefice: revenu });
+    }
+    return months;
   }, [invoices]);
 
   // Mapping activité → section
@@ -342,8 +343,8 @@ export const Dashboard: React.FC = () => {
         <div className="lg:col-span-2 bg-card border border-card-border rounded-2xl p-5">
           <div className="flex items-center justify-between mb-5">
             <div>
-              <h3 className="font-display font-bold text-white">Revenus & Dépenses</h3>
-              <p className="text-slate-400 text-xs">6 derniers mois</p>
+              <h3 className="font-display font-bold text-white">Revenus — 6 derniers mois</h3>
+              <p className="text-slate-400 text-xs">Factures marquées comme payées</p>
             </div>
             <div className="flex items-center gap-3 text-xs">
               <span className="flex items-center gap-1.5 text-slate-300"><span className="w-3 h-0.5 bg-primary-400 inline-block rounded" /> Revenus</span>
@@ -351,31 +352,39 @@ export const Dashboard: React.FC = () => {
               <span className="flex items-center gap-1.5 text-slate-400"><span className="w-3 h-0.5 bg-accent-green/60 inline-block rounded" /> Bénéfice</span>
             </div>
           </div>
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={monthlyChartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="revGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="depGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.2} />
-                  <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="benGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e1e42" vertical={false} />
-              <XAxis dataKey="mois" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-              <Tooltip content={<CustomTooltip />} />
-              <Area type="monotone" dataKey="revenu"   name="Revenus"  stroke="#7c3aed" strokeWidth={2} fill="url(#revGradient)" dot={false} activeDot={{ r: 5, fill: '#7c3aed' }} />
-              <Area type="monotone" dataKey="depenses" name="Dépenses" stroke="#06b6d4" strokeWidth={1.5} fill="url(#depGradient)" dot={false} activeDot={{ r: 4, fill: '#06b6d4' }} strokeDasharray="4 2" />
-              <Area type="monotone" dataKey="benefice" name="Bénéfice" stroke="#10b981" strokeWidth={2} fill="url(#benGradient)" dot={false} activeDot={{ r: 5, fill: '#10b981' }} />
-            </AreaChart>
-          </ResponsiveContainer>
+          {monthlyChartData.every(m => m.revenu === 0) ? (
+            <div className="flex flex-col items-center justify-center h-[220px] text-slate-500">
+              <TrendingUp className="w-8 h-8 mb-2 opacity-20" />
+              <p className="text-sm font-medium">Aucune donnée de revenus</p>
+              <p className="text-xs text-slate-600 mt-1">Créez et marquez des factures comme payées pour voir les tendances</p>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <AreaChart data={monthlyChartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="revGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="depGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="benGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e1e42" vertical={false} />
+                <XAxis dataKey="mois" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <Tooltip content={<CustomTooltip />} />
+                <Area type="monotone" dataKey="revenu"   name="Revenus"  stroke="#7c3aed" strokeWidth={2} fill="url(#revGradient)" dot={false} activeDot={{ r: 5, fill: '#7c3aed' }} />
+                <Area type="monotone" dataKey="depenses" name="Dépenses" stroke="#06b6d4" strokeWidth={1.5} fill="url(#depGradient)" dot={false} activeDot={{ r: 4, fill: '#06b6d4' }} strokeDasharray="4 2" />
+                <Area type="monotone" dataKey="benefice" name="Bénéfice" stroke="#10b981" strokeWidth={2} fill="url(#benGradient)" dot={false} activeDot={{ r: 5, fill: '#10b981' }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         {/* Project Status Pie + Client Sources */}

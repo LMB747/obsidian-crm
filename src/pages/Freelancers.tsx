@@ -89,7 +89,7 @@ const inputCls =
 // ─── Main component ──────────────────────────────────────────────────────────
 
 export const Freelancers: React.FC = () => {
-  const { freelancers, addFreelancer, updateFreelancer, deleteFreelancer } = useStore();
+  const { freelancers, addFreelancer, updateFreelancer, deleteFreelancer, projects, setActiveSection } = useStore();
 
   // ── UI State ────────────────────────────────────────────────────────────────
   const [searchInput, setSearchInput] = useState('');
@@ -326,7 +326,7 @@ export const Freelancers: React.FC = () => {
               </div>
 
               {/* TJM + Total facturé */}
-              <div className="flex items-end justify-between mb-4">
+              <div className="flex items-end justify-between mb-2">
                 <div>
                   <p className="text-2xl font-display font-bold text-white">
                     {formatEur(f.tjm)} €<span className="text-slate-400 text-sm font-normal">/j</span>
@@ -339,6 +339,42 @@ export const Freelancers: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* Projets & tâches actives */}
+              {(() => {
+                const freelancerProjects = projects.filter(p =>
+                  (p.freelancerIds || []).includes(f.id)
+                );
+                const activeTasks = projects.flatMap(p =>
+                  (p.taches || []).filter(t =>
+                    t.assigneA.toLowerCase().includes(`${f.prenom} ${f.nom}`.toLowerCase()) &&
+                    t.statut !== 'fait'
+                  )
+                ).length;
+                return (
+                  <>
+                    {freelancerProjects.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {freelancerProjects.slice(0, 3).map(p => (
+                          <span key={p.id} className="text-xs px-2 py-0.5 rounded-full bg-primary-500/15 text-primary-300 border border-primary-500/20">
+                            {p.nom}
+                          </span>
+                        ))}
+                        {freelancerProjects.length > 3 && (
+                          <span className="text-xs text-slate-500">+{freelancerProjects.length - 3}</span>
+                        )}
+                      </div>
+                    )}
+                    {activeTasks > 0 && (
+                      <p className="text-xs text-amber-400 mt-1">
+                        {activeTasks} tâche{activeTasks > 1 ? 's' : ''} active{activeTasks > 1 ? 's' : ''}
+                      </p>
+                    )}
+                  </>
+                );
+              })()}
+
+              <div className="mb-2" />
 
               {/* Action buttons */}
               <div
@@ -496,6 +532,45 @@ export const Freelancers: React.FC = () => {
                   <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap">{detailFreelancer.notes}</p>
                 </div>
               )}
+
+              {/* Projets assignés */}
+              {(() => {
+                const dp = detailFreelancer;
+                const dpProjects = projects.filter(p => (p.freelancerIds || []).includes(dp.id));
+                const dpActiveTasks = projects.flatMap(p =>
+                  (p.taches || []).filter(t =>
+                    t.assigneA.toLowerCase().includes(`${dp.prenom} ${dp.nom}`.toLowerCase()) &&
+                    t.statut !== 'fait'
+                  )
+                ).length;
+                if (dpProjects.length === 0 && dpActiveTasks === 0) return null;
+                return (
+                  <div className="bg-card border border-card-border rounded-xl p-4 space-y-3">
+                    <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Projets & Tâches</p>
+                    {dpProjects.length > 0 && (
+                      <div>
+                        <p className="text-slate-500 text-xs mb-2">{dpProjects.length} projet{dpProjects.length > 1 ? 's' : ''} assigné{dpProjects.length > 1 ? 's' : ''}</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {dpProjects.map(p => (
+                            <button
+                              key={p.id}
+                              onClick={() => { setDetailFreelancer(null); setActiveSection('projects'); }}
+                              className="text-xs px-2.5 py-1 rounded-lg bg-primary-500/15 text-primary-300 border border-primary-500/20 hover:bg-primary-500/25 transition-all"
+                            >
+                              {p.nom}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {dpActiveTasks > 0 && (
+                      <p className="text-xs text-amber-400">
+                        {dpActiveTasks} tâche{dpActiveTasks > 1 ? 's' : ''} active{dpActiveTasks > 1 ? 's' : ''} en cours
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Date */}
               <p className="text-slate-600 text-xs text-right">

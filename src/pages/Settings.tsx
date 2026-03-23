@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Building2, Mail, Phone, MapPin, Hash, Globe,
   Key, Zap, Database, CreditCard, Eye, EyeOff,
-  CheckCircle2, AlertCircle, Loader2, Save, RefreshCw,
+  CheckCircle2, AlertCircle, AlertTriangle, Loader2, Save, RefreshCw,
   Palette, Bell, Shield, Moon
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
@@ -339,6 +339,17 @@ export const Settings: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* Warning: not configured */}
+              {!localSettings.revenueCatApiKey && (
+                <div className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+                  <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-amber-300 mb-1">Intégration RevenueCat non configurée</p>
+                    <p className="text-xs text-amber-400/80">Pour connecter RevenueCat, ajoutez <code className="bg-amber-500/20 px-1 rounded">VITE_REVENUECAT_API_KEY</code> dans vos variables d'environnement Netlify. Le suivi manuel des abonnements reste disponible en attendant.</p>
+                  </div>
+                </div>
+              )}
 
               {/* Info */}
               <div className="flex items-start gap-3 bg-cyan-500/8 border border-cyan-500/20 rounded-xl p-3">

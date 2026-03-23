@@ -94,7 +94,8 @@ export interface Project {
   progression: number;
   taches: Task[];
   milestones: Milestone[];
-  equipe: string[];
+  equipe: string[];            // noms libres (legacy)
+  freelancerIds: string[];     // IDs des freelancers attachés (nouveau)
   tags: string[];
   categorie: string;
   activityLog: ProjectActivity[];
@@ -271,6 +272,8 @@ export interface CRMStore {
   addTask: (projectId: string, task: Omit<Task, 'id'>) => void;
   updateTask: (projectId: string, taskId: string, updates: Partial<Task>) => void;
   deleteTask: (projectId: string, taskId: string) => void;
+  addFreelancerToProject: (projectId: string, freelancerId: string) => void;
+  removeFreelancerFromProject: (projectId: string, freelancerId: string) => void;
 
   // Actions — Invoices
   addInvoice: (invoice: Omit<Invoice, 'id'>) => void;

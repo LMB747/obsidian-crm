@@ -131,7 +131,7 @@ export const useStore = create<CRMStore>()(
 
       // ─── Project Actions ───────────────────────────────────────────────────
       addProject: (projectData) => {
-        const newProject: Project = { ...projectData, id: uuidv4(), activityLog: [] };
+        const newProject: Project = { ...projectData, id: uuidv4(), activityLog: [], freelancerIds: projectData.freelancerIds || [] };
         const currentUser = get().currentUser;
         set((state) => ({ projects: [...state.projects, newProject] }));
         get().addActivity({
@@ -517,6 +517,45 @@ export const useStore = create<CRMStore>()(
       markAllNotificationsRead: () => {
         set((state) => ({
           notifications: state.notifications.map(n => ({ ...n, lu: true })),
+        }));
+      },
+
+      addFreelancerToProject: (projectId, freelancerId) => {
+        set((state) => ({
+          projects: state.projects.map((p) =>
+            p.id === projectId
+              ? { ...p, freelancerIds: [...new Set([...(p.freelancerIds || []), freelancerId])] }
+              : p
+          ),
+        }));
+        const project = get().projects.find(p => p.id === projectId);
+        const freelancer = get().freelancers.find(f => f.id === freelancerId);
+        if (project && freelancer) {
+          get().addProjectActivity(projectId, {
+            type: 'commentaire',
+            auteurId: get().currentUser?.id || 'system',
+            auteurNom: get().currentUser ? `${get().currentUser!.prenom} ${get().currentUser!.nom}` : 'Admin',
+            titre: 'Prestataire ajouté',
+            description: `${freelancer.prenom} ${freelancer.nom} (${freelancer.specialite}) a rejoint le projet`,
+            date: new Date().toISOString(),
+          });
+          get().addNotification({
+            titre: 'Prestataire ajouté au projet',
+            message: `${freelancer.prenom} ${freelancer.nom} a été attaché à "${project.nom}"`,
+            type: 'info',
+            lu: false,
+            date: new Date().toISOString(),
+          });
+        }
+      },
+
+      removeFreelancerFromProject: (projectId, freelancerId) => {
+        set((state) => ({
+          projects: state.projects.map((p) =>
+            p.id === projectId
+              ? { ...p, freelancerIds: (p.freelancerIds || []).filter(id => id !== freelancerId) }
+              : p
+          ),
         }));
       },
 

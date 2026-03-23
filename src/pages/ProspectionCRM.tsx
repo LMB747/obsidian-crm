@@ -4,6 +4,7 @@ import {
   ChevronDown, Check, X, Eye, Send, Ban, Brain, Crosshair, Play,
   Clock, CheckCircle2, AlertCircle, TrendingUp, Building2, Mail,
   Phone, ExternalLink, Plus, Trash2, Settings, Key, BarChart2, Star,
+  Loader2, XCircle,
 } from 'lucide-react';
 import { ProspectContact, ScrapeJob, ProspectionFilter, ProspectSource, ProspectStatus } from '../types/prospection';
 import { useProspectionStore } from '../store/useProspectionStore';
@@ -1527,8 +1528,178 @@ const TabConfiguration: React.FC = () => {
   );
 };
 
+// ─── TAB 5 — JOBS DE SCRAPING ─────────────────────────────────────────────────
+function JobsTab() {
+  const { scrapeJobs, deleteScrapeJob, clearEmptyJobs, clearAllJobs } = useProspectionStore();
+  const [confirmClear, setConfirmClear] = useState<'empty' | 'all' | null>(null);
+
+  const emptyJobs = scrapeJobs.filter(j => j.status !== 'running' && j.resultsCount === 0);
+  const sortedJobs = [...scrapeJobs].sort((a, b) =>
+    new Date(b.dateCreated).getTime() - new Date(a.dateCreated).getTime()
+  );
+
+  const statusConfig = {
+    running:   { label: 'En cours',  icon: Loader2,       color: 'text-accent-cyan',  bg: 'bg-accent-cyan/10 border-accent-cyan/30', spin: true },
+    completed: { label: 'Terminé',   icon: CheckCircle2,  color: 'text-green-400',    bg: 'bg-green-500/10 border-green-500/30',    spin: false },
+    error:     { label: 'Erreur',    icon: AlertCircle,   color: 'text-red-400',      bg: 'bg-red-500/10 border-red-500/30',        spin: false },
+    cancelled: { label: 'Annulé',   icon: XCircle,       color: 'text-slate-400',    bg: 'bg-slate-500/10 border-slate-500/30',    spin: false },
+  } as const;
+
+  return (
+    <div className="space-y-5">
+      {/* Header + actions */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-bold text-white">Historique des jobs de scraping</h3>
+          <p className="text-slate-400 text-sm mt-0.5">{scrapeJobs.length} job{scrapeJobs.length > 1 ? 's' : ''} total · {emptyJobs.length} résultat{emptyJobs.length > 1 ? 's' : ''} vide{emptyJobs.length > 1 ? 's' : ''}</p>
+        </div>
+        <div className="flex gap-2">
+          {emptyJobs.length > 0 && (
+            <button
+              onClick={() => setConfirmClear('empty')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-medium hover:bg-amber-500/20 transition-all"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Nettoyer les vides ({emptyJobs.length})
+            </button>
+          )}
+          {scrapeJobs.length > 0 && (
+            <button
+              onClick={() => setConfirmClear('all')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-medium hover:bg-red-500/20 transition-all"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Tout effacer
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Modal confirmation */}
+      {confirmClear && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-obsidian-800 border border-card-border rounded-2xl p-6 max-w-sm w-full">
+            <h3 className="text-white font-bold mb-2">Confirmer la suppression</h3>
+            <p className="text-slate-400 text-sm mb-5">
+              {confirmClear === 'empty'
+                ? `Supprimer les ${emptyJobs.length} job(s) sans résultat ?`
+                : `Supprimer tous les ${scrapeJobs.length} job(s) de l'historique ?`}
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  if (confirmClear === 'empty') clearEmptyJobs();
+                  else clearAllJobs();
+                  setConfirmClear(null);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-400 text-white text-sm font-semibold transition-all"
+              >
+                Supprimer
+              </button>
+              <button
+                onClick={() => setConfirmClear(null)}
+                className="flex-1 py-2.5 rounded-xl bg-card border border-card-border text-slate-300 text-sm font-medium transition-all hover:text-white"
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Liste des jobs */}
+      {sortedJobs.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+          <RefreshCw className="w-10 h-10 mb-3 opacity-30" />
+          <p className="font-semibold">Aucun job de scraping</p>
+          <p className="text-sm text-slate-600 mt-1">Lancez un scraping depuis l'onglet Scraper</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {sortedJobs.map(job => {
+            const cfg = statusConfig[job.status as keyof typeof statusConfig] || statusConfig.error;
+            const Icon = cfg.icon;
+            const isEmpty = job.status !== 'running' && job.resultsCount === 0;
+            return (
+              <div key={job.id} className={`bg-card border rounded-xl p-4 transition-all ${isEmpty ? 'border-red-500/20 bg-red-500/3' : 'border-card-border hover:border-primary-500/20'}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    {/* Status badge */}
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${cfg.bg} ${cfg.color}`}>
+                        <Icon className={`w-3 h-3 ${cfg.spin ? 'animate-spin' : ''}`} />
+                        {cfg.label}
+                      </span>
+                      {isEmpty && (
+                        <span className="px-2 py-0.5 rounded-full bg-red-500/15 border border-red-500/30 text-red-400 text-xs">
+                          Résultat vide
+                        </span>
+                      )}
+                      <span className="text-xs text-slate-500">
+                        {new Date(job.dateCreated).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    {/* Keywords */}
+                    <p className="text-sm text-white font-medium mb-1">
+                      {job.keywords?.join(', ') || 'Sans mot-clé'}
+                      {job.location && <span className="text-slate-400 font-normal"> · {job.location}</span>}
+                    </p>
+                    {/* Platforms */}
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {(job.platforms || []).slice(0, 6).map(p => (
+                        <span key={p} className="text-xs px-1.5 py-0.5 rounded bg-obsidian-700 text-slate-400">{p}</span>
+                      ))}
+                      {(job.platforms || []).length > 6 && (
+                        <span className="text-xs text-slate-500">+{job.platforms.length - 6}</span>
+                      )}
+                    </div>
+                    {/* Results count or error */}
+                    {job.status === 'completed' && (
+                      <p className="text-xs text-slate-400">
+                        {job.resultsCount > 0
+                          ? <span className="text-green-400 font-medium">{job.resultsCount} contact{job.resultsCount > 1 ? 's' : ''} extraits</span>
+                          : <span className="text-red-400">Aucun résultat extrait</span>}
+                      </p>
+                    )}
+                    {job.status === 'error' && job.errorMessage && (
+                      <p className="text-xs text-red-400 mt-1 bg-red-500/10 px-2 py-1 rounded-lg">
+                        ⚠ {job.errorMessage}
+                      </p>
+                    )}
+                    {job.status === 'running' && (
+                      <div className="mt-2 space-y-1">
+                        <div className="flex justify-between text-xs text-slate-500">
+                          <span>Progression</span>
+                          <span>{job.progress || 0}%</span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-obsidian-900 overflow-hidden">
+                          <div className="h-full rounded-full bg-gradient-to-r from-accent-cyan to-primary-500 transition-all" style={{ width: `${job.progress || 0}%` }} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {/* Delete button */}
+                  {job.status !== 'running' && (
+                    <button
+                      onClick={() => deleteScrapeJob(job.id)}
+                      className="flex-shrink-0 p-2 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                      title="Supprimer ce job"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
-type TabId = 'scraper' | 'prospects' | 'enrichissement' | 'configuration';
+type TabId = 'scraper' | 'prospects' | 'enrichissement' | 'jobs' | 'configuration';
 
 interface TabDef {
   id: TabId;
@@ -1540,6 +1711,7 @@ const TABS: TabDef[] = [
   { id: 'scraper',        label: 'Scraper IA',       Icon: Crosshair },
   { id: 'prospects',      label: 'Prospects',         Icon: Users },
   { id: 'enrichissement', label: 'Enrichissement IA', Icon: Brain },
+  { id: 'jobs',           label: 'Jobs',              Icon: Clock },
   { id: 'configuration',  label: 'Configuration',     Icon: Settings },
 ];
 
@@ -1623,6 +1795,7 @@ const ProspectionCRM: React.FC = () => {
         {activeTab === 'scraper'        && <TabScraper />}
         {activeTab === 'prospects'      && <TabProspects />}
         {activeTab === 'enrichissement' && <TabEnrichissement />}
+        {activeTab === 'jobs'           && <JobsTab />}
         {activeTab === 'configuration'  && <TabConfiguration />}
       </div>
     </div>
