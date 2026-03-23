@@ -16,48 +16,68 @@ import { v4 as uuidv4 } from 'uuid';
 import type { ProspectContact, ProspectSource } from '../types/prospection';
 
 // ─── Mapping Plateforme → Acteur Apify ───────────────────────────────────────
-// Ces acteurs sont disponibles sur la marketplace Apify (apify.com/store)
-// Format : username~actor-name ou username/actor-name
+// Approche robuste : on utilise `apify/google-search-scraper` comme acteur
+// universel fiable. Chaque plateforme est convertie en requête Google avec
+// `site:` pour cibler le bon réseau. L'utilisateur peut aussi renseigner un
+// Actor ID personnalisé dans la configuration.
 
+const GOOGLE_SEARCH_ACTOR = 'apify/google-search-scraper';
+
+// Tous les PLATFORM_ACTORS pointent vers Google Search Scraper
+// sauf si l'utilisateur configure un actor ID personnalisé
 export const PLATFORM_ACTORS: Partial<Record<ProspectSource, string>> = {
-  // ── Réseaux sociaux professionnels ──────────────────────────────────────
-  linkedin:    'apify/linkedin-companies-search',
-
-  // ── Cartographie & annuaires locaux ─────────────────────────────────────
-  google_maps:          'apify/google-maps-scraper',
-  annuaire_entreprises: 'apify/yellow-pages-scraper',
-  societe_com:          'apify/google-maps-scraper', // fallback Maps pour locaux FR
-
-  // ── Réseaux sociaux grand public ────────────────────────────────────────
-  instagram:     'apify/instagram-profile-scraper',
-  instagram_pro: 'apify/instagram-profile-scraper',
-  tiktok:        'apify/tiktok-profile-scraper',
-  twitter:       'apify/twitter-scraper',
-  facebook:      'apify/facebook-pages-scraper',
-  youtube:       'apify/youtube-scraper',
-
-  // ── Tech & startups ─────────────────────────────────────────────────────
-  github:      'apify/github-scraper',
-  producthunt: 'apify/product-hunt-scraper',
-  crunchbase:  'apify/crunchbase-companies-scraper',
-
-  // ── Freelances & emploi ─────────────────────────────────────────────────
-  malt:                  'bebity/malt-fr-scraper',
-  upwork:                'apify/upwork-scraper',
-  indeed:                'apify/indeed-scraper',
-  welcome_to_the_jungle: 'apify/welcome-to-the-jungle-scraper',
-
-  // ── Recherche web ───────────────────────────────────────────────────────
-  google_search: 'apify/google-search-scraper',
-  pappers:       'apify/google-search-scraper', // Pappers via Google Search
-
-  // ── Créatifs ────────────────────────────────────────────────────────────
-  behance:  'apify/web-scraper',
-  dribbble: 'apify/web-scraper',
-
-  // ── Petites annonces ────────────────────────────────────────────────────
-  le_bon_coin: 'apify/web-scraper',
+  linkedin:              GOOGLE_SEARCH_ACTOR,
+  google_maps:           'compass/crawler-google-places',
+  annuaire_entreprises:  GOOGLE_SEARCH_ACTOR,
+  societe_com:           GOOGLE_SEARCH_ACTOR,
+  instagram:             GOOGLE_SEARCH_ACTOR,
+  instagram_pro:         GOOGLE_SEARCH_ACTOR,
+  tiktok:                GOOGLE_SEARCH_ACTOR,
+  twitter:               GOOGLE_SEARCH_ACTOR,
+  facebook:              GOOGLE_SEARCH_ACTOR,
+  youtube:               GOOGLE_SEARCH_ACTOR,
+  github:                GOOGLE_SEARCH_ACTOR,
+  producthunt:           GOOGLE_SEARCH_ACTOR,
+  crunchbase:            GOOGLE_SEARCH_ACTOR,
+  malt:                  GOOGLE_SEARCH_ACTOR,
+  upwork:                GOOGLE_SEARCH_ACTOR,
+  indeed:                GOOGLE_SEARCH_ACTOR,
+  welcome_to_the_jungle: GOOGLE_SEARCH_ACTOR,
+  google_search:         GOOGLE_SEARCH_ACTOR,
+  pappers:               GOOGLE_SEARCH_ACTOR,
+  behance:               GOOGLE_SEARCH_ACTOR,
+  dribbble:              GOOGLE_SEARCH_ACTOR,
+  le_bon_coin:           GOOGLE_SEARCH_ACTOR,
 };
+
+// Préfixes site: pour convertir chaque plateforme en requête Google ciblée
+const PLATFORM_SITE_PREFIX: Partial<Record<ProspectSource, string>> = {
+  linkedin:              'site:linkedin.com/in OR site:linkedin.com/company',
+  instagram:             'site:instagram.com',
+  instagram_pro:         'site:instagram.com',
+  tiktok:                'site:tiktok.com/@',
+  twitter:               'site:x.com OR site:twitter.com',
+  facebook:              'site:facebook.com',
+  youtube:               'site:youtube.com/channel OR site:youtube.com/@',
+  github:                'site:github.com',
+  producthunt:           'site:producthunt.com',
+  crunchbase:            'site:crunchbase.com/organization',
+  malt:                  'site:malt.fr/profile',
+  upwork:                'site:upwork.com/freelancers',
+  indeed:                'site:indeed.fr',
+  welcome_to_the_jungle: 'site:welcometothejungle.com',
+  pappers:               'site:pappers.fr',
+  behance:               'site:behance.net',
+  dribbble:              'site:dribbble.com',
+  le_bon_coin:           'site:leboncoin.fr',
+  annuaire_entreprises:  'site:societe.com OR site:annuaire-entreprises.com',
+  societe_com:           'site:societe.com',
+};
+
+// Stockage de l'actor ID personnalisé (en mémoire, pas persisté)
+let _customActorId = '';
+export function setCustomActorId(id: string) { _customActorId = id.trim(); }
+export function getCustomActorId(): string { return _customActorId; }
 
 // Retourne true si la plateforme a un acteur Apify configuré
 export function isPlatformSupported(platform: ProspectSource): boolean {
@@ -87,183 +107,41 @@ function buildActorInput(platform: ProspectSource, input: ScrapeInput): Record<s
     .trim();
   const maxResults = input.maxResults ?? 25;
 
-  switch (platform) {
-    // ── Google Maps (entreprises locales) ──────────────────────────────────
-    case 'google_maps':
-    case 'societe_com':
-    case 'annuaire_entreprises':
-      return {
-        searchStringsArray: [searchQuery],
-        maxCrawledPlacesPerSearch: maxResults,
-        language: 'fr',
-        countryCode: 'fr',
-        includeWebResults: true,
-      };
-
-    // ── LinkedIn ───────────────────────────────────────────────────────────
-    case 'linkedin':
-      return {
-        searchQuery,
-        maxResults,
-        proxyConfiguration: { useApifyProxy: true },
-      };
-
-    // ── Instagram ──────────────────────────────────────────────────────────
-    case 'instagram':
-    case 'instagram_pro':
-      return {
-        usernames: [],
-        resultsLimit: maxResults,
-        searchQuery,
-      };
-
-    // ── TikTok ─────────────────────────────────────────────────────────────
-    case 'tiktok':
-      return {
-        profiles: [],
-        searchSection: 'user',
-        searchQuery,
-        maxProfilesPerQuery: maxResults,
-      };
-
-    // ── Twitter / X ────────────────────────────────────────────────────────
-    case 'twitter':
-      return {
-        searchTerms: [searchQuery],
-        maxItems: maxResults,
-        addUserInfo: true,
-        queryType: 'Latest',
-      };
-
-    // ── Facebook Pages ─────────────────────────────────────────────────────
-    case 'facebook':
-      return {
-        startUrls: [],
-        searchQuery,
-        maxItems: maxResults,
-      };
-
-    // ── YouTube ────────────────────────────────────────────────────────────
-    case 'youtube':
-      return {
-        searchQuery,
-        maxResults,
-        type: 'channel',
-      };
-
-    // ── GitHub ─────────────────────────────────────────────────────────────
-    case 'github':
-      return {
-        searchQuery: input.keywords
-          ? `${input.keywords}${input.location ? ` location:${input.location}` : ''}`
-          : searchQuery,
-        maxResults,
-      };
-
-    // ── ProductHunt ────────────────────────────────────────────────────────
-    case 'producthunt':
-      return {
-        searchQuery,
-        maxResults,
-      };
-
-    // ── Crunchbase ─────────────────────────────────────────────────────────
-    case 'crunchbase':
-      return {
-        searchQuery,
-        maxItems: maxResults,
-      };
-
-    // ── Malt ───────────────────────────────────────────────────────────────
-    case 'malt':
-      return {
-        searchQuery,
-        maxResults,
-      };
-
-    // ── Upwork ─────────────────────────────────────────────────────────────
-    case 'upwork':
-      return {
-        searchQuery,
-        maxResults,
-        type: 'freelancers',
-      };
-
-    // ── Indeed ─────────────────────────────────────────────────────────────
-    case 'indeed':
-      return {
-        queries: [{
-          keyword: searchQuery,
-          location: input.location || 'France',
-        }],
-        maxItems: maxResults,
-        country: 'fr',
-      };
-
-    // ── Welcome to the Jungle ──────────────────────────────────────────────
-    case 'welcome_to_the_jungle':
-      return {
-        startUrls: [{
-          url: `https://www.welcometothejungle.com/fr/jobs?query=${encodeURIComponent(input.keywords)}&aroundQuery=${encodeURIComponent(input.location || 'France')}`,
-        }],
-        maxRequestsPerCrawl: maxResults,
-      };
-
-    // ── Google Search (aussi pour Pappers) ─────────────────────────────────
-    case 'google_search':
-      return {
-        queries: [searchQuery],
-        maxResults,
-        resultsPerPage: 10,
-        languageCode: 'fr',
-        countryCode: 'fr',
-      };
-    case 'pappers':
-      return {
-        queries: [`site:pappers.fr ${input.keywords} ${input.location}`.trim()],
-        maxResults,
-        resultsPerPage: 10,
-        languageCode: 'fr',
-        countryCode: 'fr',
-      };
-
-    // ── Behance ────────────────────────────────────────────────────────────
-    case 'behance':
-      return {
-        startUrls: [{
-          url: `https://www.behance.net/search/projects?search=${encodeURIComponent(searchQuery)}`,
-        }],
-        maxRequestsPerCrawl: maxResults,
-        runMode: 'DEVELOPMENT',
-      };
-
-    // ── Dribbble ───────────────────────────────────────────────────────────
-    case 'dribbble':
-      return {
-        startUrls: [{
-          url: `https://dribbble.com/search/designers?q=${encodeURIComponent(searchQuery)}`,
-        }],
-        maxRequestsPerCrawl: maxResults,
-        runMode: 'DEVELOPMENT',
-      };
-
-    // ── Le Bon Coin ────────────────────────────────────────────────────────
-    case 'le_bon_coin':
-      return {
-        startUrls: [{
-          url: `https://www.leboncoin.fr/recherche?text=${encodeURIComponent(searchQuery)}&category=3`,
-        }],
-        maxRequestsPerCrawl: maxResults,
-        runMode: 'DEVELOPMENT',
-      };
-
-    // ── Fallback générique ─────────────────────────────────────────────────
-    default:
-      return {
-        searchStringsArray: [searchQuery],
-        maxResults,
-      };
+  // Si l'utilisateur a un actor ID personnalisé, on ne peut pas deviner le format
+  // d'input → on envoie un format générique
+  if (_customActorId) {
+    return {
+      searchQuery,
+      queries: [searchQuery],
+      maxResults,
+      searchStringsArray: [searchQuery],
+    };
   }
+
+  // Google Maps a un vrai acteur dédié (compass/crawler-google-places)
+  if (platform === 'google_maps') {
+    return {
+      searchStringsArray: [searchQuery],
+      maxCrawledPlacesPerSearch: maxResults,
+      language: 'fr',
+      countryCode: 'fr',
+      includeWebResults: true,
+    };
+  }
+
+  // Toutes les autres plateformes → Google Search avec préfixe site:
+  const sitePrefix = PLATFORM_SITE_PREFIX[platform] || '';
+  const googleQuery = sitePrefix
+    ? `${sitePrefix} ${searchQuery}`
+    : searchQuery;
+
+  return {
+    queries: [googleQuery],
+    maxPagesPerQuery: Math.ceil(maxResults / 10),
+    resultsPerPage: 10,
+    languageCode: 'fr',
+    countryCode: 'fr',
+  };
 }
 
 // ─── API Calls (via Netlify Function proxy) ───────────────────────────────────
@@ -293,7 +171,8 @@ export async function startApifyRun(
   platform: ProspectSource,
   input: ScrapeInput
 ): Promise<{ runId: string; error?: string }> {
-  const actor = PLATFORM_ACTORS[platform];
+  // Priorité : actor ID personnalisé > mapping par plateforme
+  const actor = _customActorId || PLATFORM_ACTORS[platform];
   if (!actor) {
     return { runId: '', error: `Plateforme "${platform}" non supportée via Apify` };
   }

@@ -71,6 +71,16 @@ export interface ScrapeJob {
   errorMessage?: string;
 }
 
+export type EmailTemplateType = 'premier_contact' | 'relance' | 'proposition' | 'remerciement';
+
+export interface EmailTemplate {
+  id: string;
+  nom: string;
+  sujet: string;
+  corps: string;
+  type: EmailTemplateType;
+}
+
 export interface ProspectionFilter {
   search: string;
   sources: ProspectSource[];

@@ -1,4 +1,4 @@
-import React, { lazy, Suspense } from 'react';
+import React, { lazy, Suspense, useEffect } from 'react';
 import { useStore } from './store/useStore';
 import { Layout } from './components/Layout/Layout';
 import { LoginScreen } from './components/Auth/LoginScreen';
@@ -19,6 +19,7 @@ const Settings        = lazy(() => import('./pages/Settings').then(m => ({ defau
 const Admin           = lazy(() => import('./pages/Admin').then(m => ({ default: m.Admin })));
 const FreelancerPortal = lazy(() => import('./pages/FreelancerPortal').then(m => ({ default: m.FreelancerPortal })));
 const ProspectionCRM  = lazy(() => import('./pages/ProspectionCRM').then(m => ({ default: m.ProspectionCRM })));
+const CalendarPage    = lazy(() => import('./pages/Calendar').then(m => ({ default: m.Calendar })));
 const NotFound        = lazy(() => import('./pages/NotFound').then(m => ({ default: m.NotFound })));
 
 const pageMap: Record<string, React.ComponentType> = {
@@ -33,6 +34,7 @@ const pageMap: Record<string, React.ComponentType> = {
   analytics:           Analytics,
   'media-buying':      MediaBuying,
   prospection:         ProspectionCRM,
+  calendar:            CalendarPage,
   settings:            Settings,
   admin:               Admin,
   'freelancer-portal': FreelancerPortal,
@@ -40,6 +42,30 @@ const pageMap: Record<string, React.ComponentType> = {
 
 const App: React.FC = () => {
   const { activeSection, currentUser, login, setupComplete, completeSetup } = useStore();
+  const setActiveSection = useStore((s) => s.setActiveSection);
+
+  // Sync URL hash ↔ activeSection
+  useEffect(() => {
+    const hash = window.location.hash.replace('#', '');
+    if (hash && hash !== activeSection && hash in pageMap) {
+      setActiveSection(hash);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    window.location.hash = activeSection;
+  }, [activeSection]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const hash = window.location.hash.replace('#', '');
+      if (hash && hash in pageMap) {
+        setActiveSection(hash);
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [setActiveSection]);
 
   // Premier lancement → configuration initiale
   if (!setupComplete) {

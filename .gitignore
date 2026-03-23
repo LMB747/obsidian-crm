@@ -1,1 +1,18 @@
 node_modules
+
+# Build output
+dist/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Local Netlify folder
+.netlify
+
+# Logs
+*.log
+
+# OS files
+.DS_Store

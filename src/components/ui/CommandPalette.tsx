@@ -1,34 +1,88 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Search, Users, Briefcase, FolderOpen, FileText, X } from 'lucide-react';
+import {
+  Search, Users, Briefcase, FolderOpen, FileText, X,
+  LayoutDashboard, Moon, BarChart3, Settings, Clock, FilePlus2,
+  TrendingUp, ScanSearch, Shield, Plus, Zap, ArrowRight, CalendarDays,
+  CheckSquare, UserSearch,
+} from 'lucide-react';
 import clsx from 'clsx';
 import { useStore } from '../../store/useStore';
+import { useProspectionStore } from '../../store/useProspectionStore';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface PaletteResult {
+interface PaletteItem {
   id: string;
   label: string;
   sublabel?: string;
-  section: string;
   category: string;
+  icon?: React.FC<{ className?: string }>;
+  action: () => void;
 }
 
-interface ResultGroup {
+interface ItemGroup {
   category: string;
+  label: string;
   icon: React.FC<{ className?: string }>;
-  items: PaletteResult[];
+  items: PaletteItem[];
 }
 
-// ─── Config ───────────────────────────────────────────────────────────────────
+// ─── Fuzzy match ──────────────────────────────────────────────────────────────
 
-const CATEGORY_CONFIG: Record<string, { label: string; icon: React.FC<{ className?: string }> }> = {
-  clients:     { label: 'Clients',      icon: Users },
-  freelancers: { label: 'Prestataires', icon: Briefcase },
-  projects:    { label: 'Projets',      icon: FolderOpen },
-  invoices:    { label: 'Factures',     icon: FileText },
-};
+function fuzzyMatch(text: string, query: string): boolean {
+  const t = text.toLowerCase();
+  const q = query.toLowerCase();
+  let qi = 0;
+  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+    if (t[ti] === q[qi]) qi++;
+  }
+  return qi === q.length;
+}
 
-const MAX_PER_CATEGORY = 3;
+function fuzzyScore(text: string, query: string): number {
+  const t = text.toLowerCase();
+  const q = query.toLowerCase();
+  // Exact start match = best
+  if (t.startsWith(q)) return 3;
+  // Contains = good
+  if (t.includes(q)) return 2;
+  // Fuzzy = ok
+  let qi = 0;
+  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+    if (t[ti] === q[qi]) qi++;
+  }
+  return qi === q.length ? 1 : 0;
+}
+
+// ─── Static data ──────────────────────────────────────────────────────────────
+
+const NAV_SECTIONS: { id: string; label: string; icon: React.FC<{ className?: string }> }[] = [
+  { id: 'dashboard',    label: 'Dashboard',      icon: LayoutDashboard },
+  { id: 'clients',      label: 'Clients CRM',    icon: Users },
+  { id: 'freelancers',  label: 'Prestataires',   icon: Briefcase },
+  { id: 'projects',     label: 'Projets',        icon: FolderOpen },
+  { id: 'worktracking', label: 'Suivi Travaux',  icon: Clock },
+  { id: 'invoices',     label: 'Facturation',    icon: FileText },
+  { id: 'documents',    label: 'Documents',      icon: FilePlus2 },
+  { id: 'snooze',       label: 'Pay to Snooze',  icon: Moon },
+  { id: 'calendar',     label: 'Calendrier',     icon: CalendarDays },
+  { id: 'analytics',    label: 'Analytiques',    icon: BarChart3 },
+  { id: 'media-buying', label: 'Media Buying',   icon: TrendingUp },
+  { id: 'prospection',  label: 'Prospection IA', icon: ScanSearch },
+  { id: 'admin',        label: 'Administration', icon: Shield },
+  { id: 'settings',     label: 'Parametres',     icon: Settings },
+];
+
+const QUICK_ACTIONS: { id: string; label: string; sublabel: string; section: string; icon: React.FC<{ className?: string }> }[] = [
+  { id: 'new-client',     label: 'Nouveau client',      sublabel: 'Ajouter au CRM',        section: 'clients',     icon: Plus },
+  { id: 'new-project',    label: 'Nouveau projet',      sublabel: 'Creer un projet',       section: 'projects',    icon: Plus },
+  { id: 'new-freelancer', label: 'Nouveau prestataire', sublabel: 'Ajouter un freelance',  section: 'freelancers', icon: Plus },
+  { id: 'new-invoice',    label: 'Nouvelle facture',    sublabel: 'Creer une facture',     section: 'documents',   icon: Plus },
+  { id: 'new-devis',      label: 'Nouveau devis',       sublabel: 'Generer un devis',      section: 'documents',   icon: Plus },
+  { id: 'start-timer',    label: 'Demarrer un timer',   sublabel: 'Suivi du temps',        section: 'worktracking', icon: Zap },
+];
+
+const MAX_PER_CATEGORY = 4;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -39,6 +93,7 @@ interface CommandPaletteProps {
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose }) => {
   const { clients, freelancers, projects, invoices, setActiveSection } = useStore();
+  const prospects = useProspectionStore(s => s.prospects);
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -54,73 +109,165 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
   }, [open]);
 
   // Build result groups based on query
-  const groups: ResultGroup[] = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
+  const groups: ItemGroup[] = React.useMemo(() => {
+    const q = query.trim();
+    const ql = q.toLowerCase();
 
-    const match = (text: string) => !q || text.toLowerCase().includes(q);
+    const navigate = (section: string) => () => {
+      setActiveSection(section);
+      onClose();
+    };
 
-    const clientResults: PaletteResult[] = clients
-      .filter((c) => match(c.nom) || match(c.entreprise) || match(c.email))
+    // ── No query → show quick actions + navigation ──
+    if (!q) {
+      const actionItems: PaletteItem[] = QUICK_ACTIONS.map((a) => ({
+        id: a.id,
+        label: a.label,
+        sublabel: a.sublabel,
+        category: 'actions',
+        icon: a.icon,
+        action: navigate(a.section),
+      }));
+
+      const navItems: PaletteItem[] = NAV_SECTIONS.map((s) => ({
+        id: `nav-${s.id}`,
+        label: s.label,
+        category: 'navigation',
+        icon: s.icon,
+        action: navigate(s.id),
+      }));
+
+      return [
+        { category: 'actions',    label: 'Actions rapides', icon: Zap,          items: actionItems },
+        { category: 'navigation', label: 'Navigation',      icon: ArrowRight,   items: navItems },
+      ];
+    }
+
+    // ── With query → search everything ──
+    const bestMatch = (texts: string[]): number =>
+      Math.max(...texts.map((t) => fuzzyScore(t, ql)));
+
+    // Navigation matches
+    const navMatches: PaletteItem[] = NAV_SECTIONS
+      .filter((s) => fuzzyMatch(s.label, ql) || fuzzyMatch(s.id, ql))
+      .map((s) => ({
+        id: `nav-${s.id}`,
+        label: s.label,
+        sublabel: 'Aller a la section',
+        category: 'navigation',
+        icon: s.icon,
+        action: navigate(s.id),
+      }));
+
+    // Action matches
+    const actionMatches: PaletteItem[] = QUICK_ACTIONS
+      .filter((a) => fuzzyMatch(a.label, ql) || fuzzyMatch(a.sublabel, ql))
+      .map((a) => ({
+        id: a.id,
+        label: a.label,
+        sublabel: a.sublabel,
+        category: 'actions',
+        icon: a.icon,
+        action: navigate(a.section),
+      }));
+
+    // Entity searches
+    const clientResults: PaletteItem[] = clients
+      .filter((c) => fuzzyMatch(c.nom, ql) || fuzzyMatch(c.entreprise, ql) || fuzzyMatch(c.email, ql))
+      .sort((a, b) => bestMatch([b.nom, b.entreprise]) - bestMatch([a.nom, a.entreprise]))
       .slice(0, MAX_PER_CATEGORY)
       .map((c) => ({
         id: c.id,
         label: c.nom,
         sublabel: c.entreprise,
-        section: 'clients',
         category: 'clients',
+        action: navigate('clients'),
       }));
 
-    const freelancerResults: PaletteResult[] = freelancers
-      .filter((f) => match(`${f.prenom} ${f.nom}`) || match(f.entreprise) || match(f.email))
+    const freelancerResults: PaletteItem[] = freelancers
+      .filter((f) => fuzzyMatch(`${f.prenom} ${f.nom}`, ql) || fuzzyMatch(f.entreprise, ql) || fuzzyMatch(f.email, ql))
+      .sort((a, b) => bestMatch([`${b.prenom} ${b.nom}`, b.entreprise]) - bestMatch([`${a.prenom} ${a.nom}`, a.entreprise]))
       .slice(0, MAX_PER_CATEGORY)
       .map((f) => ({
         id: f.id,
         label: `${f.prenom} ${f.nom}`,
         sublabel: f.entreprise,
-        section: 'freelancers',
         category: 'freelancers',
+        action: navigate('freelancers'),
       }));
 
-    const projectResults: PaletteResult[] = projects
-      .filter((p) => match(p.nom) || match(p.clientNom) || match(p.description))
+    const projectResults: PaletteItem[] = projects
+      .filter((p) => fuzzyMatch(p.nom, ql) || fuzzyMatch(p.clientNom, ql) || fuzzyMatch(p.description, ql))
+      .sort((a, b) => bestMatch([b.nom, b.clientNom]) - bestMatch([a.nom, a.clientNom]))
       .slice(0, MAX_PER_CATEGORY)
       .map((p) => ({
         id: p.id,
         label: p.nom,
         sublabel: p.clientNom,
-        section: 'projects',
         category: 'projects',
+        action: navigate('projects'),
       }));
 
-    const invoiceResults: PaletteResult[] = invoices
-      .filter((i) => match(i.numero) || match(i.clientNom) || match(i.statut))
+    const invoiceResults: PaletteItem[] = invoices
+      .filter((i) => fuzzyMatch(i.numero, ql) || fuzzyMatch(i.clientNom, ql) || fuzzyMatch(i.statut, ql))
+      .sort((a, b) => bestMatch([b.numero, b.clientNom]) - bestMatch([a.numero, a.clientNom]))
       .slice(0, MAX_PER_CATEGORY)
       .map((i) => ({
         id: i.id,
         label: i.numero,
         sublabel: `${i.clientNom} — ${i.total.toLocaleString('fr-FR')} €`,
-        section: 'invoices',
         category: 'invoices',
+        action: navigate('invoices'),
+      }));
+
+    // Prospect searches
+    const prospectResults: PaletteItem[] = prospects
+      .filter((p) => fuzzyMatch(`${p.prenom} ${p.nom}`, ql) || fuzzyMatch(p.entreprise, ql) || (p.email && fuzzyMatch(p.email, ql)))
+      .sort((a, b) => bestMatch([`${b.prenom} ${b.nom}`, b.entreprise]) - bestMatch([`${a.prenom} ${a.nom}`, a.entreprise]))
+      .slice(0, MAX_PER_CATEGORY)
+      .map((p) => ({
+        id: p.id,
+        label: `${p.prenom} ${p.nom}`,
+        sublabel: p.entreprise,
+        category: 'prospects',
+        action: navigate('prospection'),
+      }));
+
+    // Task searches (across all projects)
+    const taskResults: PaletteItem[] = projects
+      .flatMap((proj) => proj.taches.map((t) => ({ ...t, projectNom: proj.nom })))
+      .filter((t) => fuzzyMatch(t.titre, ql))
+      .sort((a, b) => fuzzyScore(b.titre, ql) - fuzzyScore(a.titre, ql))
+      .slice(0, MAX_PER_CATEGORY)
+      .map((t) => ({
+        id: t.id,
+        label: t.titre,
+        sublabel: t.projectNom,
+        category: 'tasks',
+        action: navigate('projects'),
       }));
 
     return [
-      { category: 'clients',     icon: CATEGORY_CONFIG.clients.icon,     items: clientResults },
-      { category: 'freelancers', icon: CATEGORY_CONFIG.freelancers.icon, items: freelancerResults },
-      { category: 'projects',    icon: CATEGORY_CONFIG.projects.icon,    items: projectResults },
-      { category: 'invoices',    icon: CATEGORY_CONFIG.invoices.icon,    items: invoiceResults },
+      { category: 'actions',     label: 'Actions',       icon: Zap,        items: actionMatches },
+      { category: 'navigation',  label: 'Navigation',    icon: ArrowRight,  items: navMatches },
+      { category: 'clients',     label: 'Clients',       icon: Users,       items: clientResults },
+      { category: 'freelancers', label: 'Prestataires',  icon: Briefcase,   items: freelancerResults },
+      { category: 'projects',    label: 'Projets',       icon: FolderOpen,  items: projectResults },
+      { category: 'invoices',    label: 'Factures',      icon: FileText,    items: invoiceResults },
+      { category: 'prospects',   label: 'Prospects',     icon: UserSearch,  items: prospectResults },
+      { category: 'tasks',       label: 'Tâches',        icon: CheckSquare, items: taskResults },
     ].filter((g) => g.items.length > 0);
-  }, [query, clients, freelancers, projects, invoices]);
+  }, [query, clients, freelancers, projects, invoices, prospects, setActiveSection, onClose]);
 
   // Flat list of all visible items for keyboard navigation
   const flatItems = groups.flatMap((g) => g.items);
   const totalItems = flatItems.length;
 
   const handleSelect = useCallback(
-    (item: PaletteResult) => {
-      setActiveSection(item.section);
-      onClose();
+    (item: PaletteItem) => {
+      item.action();
     },
-    [setActiveSection, onClose]
+    []
   );
 
   // Keyboard navigation
@@ -185,9 +332,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Rechercher clients, projets, prestataires, factures…"
+            placeholder="Rechercher ou taper une commande…"
             className="flex-1 bg-transparent text-white placeholder-slate-500 text-base outline-none"
           />
+          <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-card border border-card-border text-[10px] text-slate-500 font-mono">
+            Ctrl+K
+          </kbd>
           {query && (
             <button
               onClick={() => setQuery('')}
@@ -202,14 +352,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
         <div ref={listRef} className="max-h-[60vh] overflow-y-auto py-2">
           {groups.length === 0 ? (
             <div className="px-4 py-8 text-center text-slate-500 text-sm">
-              {query
-                ? `Aucun résultat pour « ${query} »`
-                : 'Commencez à taper pour rechercher…'}
+              Aucun resultat pour &laquo; {query} &raquo;
             </div>
           ) : (
             groups.map((group) => {
               const GroupIcon = group.icon;
-              const categoryLabel = CATEGORY_CONFIG[group.category]?.label ?? group.category;
 
               return (
                 <div key={group.category} className="mb-1">
@@ -217,7 +364,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
                   <div className="flex items-center gap-2 px-4 py-1.5">
                     <GroupIcon className="w-3.5 h-3.5 text-slate-500" />
                     <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      {categoryLabel}
+                      {group.label}
                     </span>
                   </div>
 
@@ -225,6 +372,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
                   {group.items.map((item) => {
                     const itemIndex = runningIndex++;
                     const isSelected = itemIndex === selectedIndex;
+                    const ItemIcon = item.icon;
 
                     return (
                       <button
@@ -239,6 +387,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
                             : 'text-slate-300 hover:bg-card-hover hover:text-white'
                         )}
                       >
+                        {ItemIcon && (
+                          <ItemIcon className={clsx('w-4 h-4 flex-shrink-0', isSelected ? 'text-primary-400' : 'text-slate-500')} />
+                        )}
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{item.label}</p>
                           {item.sublabel && (
@@ -264,7 +415,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
         {/* Footer hint */}
         <div className="flex items-center gap-4 px-4 py-2.5 border-t border-card-border text-xs text-slate-600">
           <span><kbd className="font-sans">↑↓</kbd> naviguer</span>
-          <span><kbd className="font-sans">↵</kbd> sélectionner</span>
+          <span><kbd className="font-sans">↵</kbd> selectionner</span>
           <span><kbd className="font-sans">Esc</kbd> fermer</span>
         </div>
       </div>

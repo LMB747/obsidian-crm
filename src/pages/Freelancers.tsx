@@ -1,4 +1,4 @@
-import React, { useState, useMemo, KeyboardEvent } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Users, Plus, Pencil, Trash2, Mail, Search, X,
   Star, TrendingUp, Briefcase, Euro, Download,
@@ -10,6 +10,7 @@ import { StatCard } from '../components/ui/StatCard';
 import { Modal } from '../components/ui/Modal';
 import { exportFreelancersCSV } from '../utils/csvExport';
 import { useDebounce } from '../hooks/useDebounce';
+import { TagPicker } from '../components/ui/TagPicker';
 
 // ─── Colour helpers ──────────────────────────────────────────────────────────
 
@@ -89,7 +90,8 @@ const inputCls =
 // ─── Main component ──────────────────────────────────────────────────────────
 
 export const Freelancers: React.FC = () => {
-  const { freelancers, addFreelancer, updateFreelancer, deleteFreelancer, projects, setActiveSection } = useStore();
+  const { freelancers, addFreelancer, updateFreelancer, deleteFreelancer, projects, setActiveSection, unifiedTags } = useStore();
+  const getTagColor = (name: string) => unifiedTags.find(t => t.name === name)?.color || '#6366f1';
 
   // ── UI State ────────────────────────────────────────────────────────────────
   const [searchInput, setSearchInput] = useState('');
@@ -100,7 +102,6 @@ export const Freelancers: React.FC = () => {
   const [isModalOpen, setIsModalOpen]     = useState(false);
   const [editingId, setEditingId]         = useState<string | null>(null);
   const [formData, setFormData]           = useState<FreelancerFormData>(emptyForm);
-  const [tagInput, setTagInput]           = useState('');
 
   const [detailFreelancer, setDetailFreelancer] = useState<Freelancer | null>(null);
   const [confirmDeleteId, setConfirmDeleteId]   = useState<string | null>(null);
@@ -135,7 +136,6 @@ export const Freelancers: React.FC = () => {
   const openAdd = () => {
     setEditingId(null);
     setFormData(emptyForm);
-    setTagInput('');
     setIsModalOpen(true);
   };
 
@@ -148,7 +148,6 @@ export const Freelancers: React.FC = () => {
       tjm: f.tjm, statut: f.statut, tags: [...f.tags], notes: f.notes,
       totalFacture: f.totalFacture,
     });
-    setTagInput('');
     setIsModalOpen(true);
   };
 
@@ -165,21 +164,6 @@ export const Freelancers: React.FC = () => {
       addFreelancer(formData);
     }
     closeModal();
-  };
-
-  const handleTagKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const val = tagInput.trim();
-      if (val && !formData.tags.includes(val)) {
-        setFormData(p => ({ ...p, tags: [...p.tags, val] }));
-      }
-      setTagInput('');
-    }
-  };
-
-  const removeTag = (tag: string) => {
-    setFormData(p => ({ ...p, tags: p.tags.filter(t => t !== tag) }));
   };
 
   const handleDelete = (id: string) => {
@@ -516,11 +500,14 @@ export const Freelancers: React.FC = () => {
                 <div>
                   <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-2">Tags</p>
                   <div className="flex flex-wrap gap-2">
-                    {detailFreelancer.tags.map(tag => (
-                      <span key={tag} className="bg-primary-500/20 text-primary-300 border border-primary-500/30 text-xs px-2.5 py-1 rounded-lg">
-                        {tag}
-                      </span>
-                    ))}
+                    {detailFreelancer.tags.map(tag => {
+                      const c = getTagColor(tag);
+                      return (
+                        <span key={tag} className="text-xs px-2.5 py-1 rounded-lg font-medium" style={{ backgroundColor: `${c}25`, color: c, border: `1px solid ${c}40` }}>
+                          {tag}
+                        </span>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -760,33 +747,10 @@ export const Freelancers: React.FC = () => {
           {/* 5. Tags */}
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Tags</p>
-            <input
-              type="text"
-              value={tagInput}
-              onChange={e => setTagInput(e.target.value)}
-              onKeyDown={handleTagKeyDown}
-              className={inputCls}
-              placeholder="Taper un tag puis Entrée…"
+            <TagPicker
+              selected={formData.tags}
+              onChange={(tags) => setFormData(p => ({ ...p, tags }))}
             />
-            {formData.tags.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-2">
-                {formData.tags.map(tag => (
-                  <span
-                    key={tag}
-                    className="flex items-center gap-1.5 bg-primary-500/20 text-primary-300 border border-primary-500/30 text-xs px-2.5 py-1 rounded-lg"
-                  >
-                    {tag}
-                    <button
-                      type="button"
-                      onClick={() => removeTag(tag)}
-                      className="text-primary-400 hover:text-white transition-colors"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* 6. Notes */}

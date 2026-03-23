@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import { ProspectContact, ScrapeJob, ProspectSource, ProspectionFilter } from '../types/prospection';
+import { ProspectContact, ScrapeJob, ProspectSource, ProspectionFilter, EmailTemplate } from '../types/prospection';
 import { useStore } from './useStore';
 import { startApifyRun, checkApifyRun, getApifyResults, PLATFORM_ACTORS } from '../lib/apifyService';
 
@@ -34,9 +34,15 @@ interface ProspectionStore {
   filters: ProspectionFilter;
   selectedProspects: string[];
   apiKeys: ProspectionApiKeys;
+  emailTemplates: EmailTemplate[];
 
   // API key action
   updateApiKeys: (keys: Partial<ProspectionApiKeys>) => void;
+
+  // Email template actions
+  addEmailTemplate: (tpl: Omit<EmailTemplate, 'id'>) => void;
+  updateEmailTemplate: (id: string, updates: Partial<EmailTemplate>) => void;
+  deleteEmailTemplate: (id: string) => void;
 
   // Prospect actions
   addProspect: (prospect: Omit<ProspectContact, 'id'>) => void;
@@ -82,6 +88,17 @@ export const useProspectionStore = create<ProspectionStore>()(
       filters: defaultFilters,
       selectedProspects: [],
       apiKeys: { apify: '', hunter: '', linkedin: '', twitter: '', google: '', github: '', phantombuster: '' },
+      emailTemplates: [
+        { id: 'tpl-1', nom: 'Premier contact', type: 'premier_contact', sujet: 'Collaboration {{PLATEFORME}} — {{NOM_AGENCE}}', corps: 'Bonjour {{PRENOM}},\n\nJe me permets de vous contacter car votre travail chez {{ENTREPRISE}} a retenu notre attention.\n\nChez {{NOM_AGENCE}}, nous accompagnons des entreprises comme la vôtre en stratégie digitale et marketing.\n\nSeriez-vous disponible pour un échange de 15 minutes cette semaine ?\n\nBien cordialement,\n{{NOM_AGENCE}}' },
+        { id: 'tpl-2', nom: 'Relance', type: 'relance', sujet: 'Suite à mon message — {{NOM_AGENCE}}', corps: 'Bonjour {{PRENOM}},\n\nJe me permets de revenir vers vous suite à mon précédent message.\n\nJe serais ravi de pouvoir échanger avec vous sur les besoins de {{ENTREPRISE}} en termes de stratégie digitale.\n\nÊtes-vous disponible cette semaine pour un court appel ?\n\nCordialement,\n{{NOM_AGENCE}}' },
+        { id: 'tpl-3', nom: 'Proposition commerciale', type: 'proposition', sujet: 'Proposition — {{NOM_AGENCE}} x {{ENTREPRISE}}', corps: 'Bonjour {{PRENOM}},\n\nSuite à notre échange, je vous fais parvenir notre proposition d\'accompagnement pour {{ENTREPRISE}}.\n\nVous trouverez ci-joint le détail de notre offre incluant :\n- Stratégie digitale sur mesure\n- Gestion de campagnes média\n- Reporting et optimisation continue\n\nN\'hésitez pas à revenir vers moi pour toute question.\n\nCordialement,\n{{NOM_AGENCE}}' },
+        { id: 'tpl-4', nom: 'Remerciement', type: 'remerciement', sujet: 'Merci pour votre confiance — {{NOM_AGENCE}}', corps: 'Bonjour {{PRENOM}},\n\nJe tenais à vous remercier pour la confiance que vous accordez à {{NOM_AGENCE}}.\n\nNous sommes ravis de collaborer avec {{ENTREPRISE}} et mettons tout en œuvre pour atteindre vos objectifs.\n\nN\'hésitez pas à nous contacter à tout moment.\n\nBien cordialement,\n{{NOM_AGENCE}}' },
+      ],
+
+      // ─── Email Template Actions ─────────────────────────────────────────────
+      addEmailTemplate: (tplData) => set(s => ({ emailTemplates: [...s.emailTemplates, { ...tplData, id: uuidv4() }] })),
+      updateEmailTemplate: (id, updates) => set(s => ({ emailTemplates: s.emailTemplates.map(t => t.id === id ? { ...t, ...updates } : t) })),
+      deleteEmailTemplate: (id) => set(s => ({ emailTemplates: s.emailTemplates.filter(t => t.id !== id) })),
 
       // ─── Prospect Actions ─────────────────────────────────────────────────
       addProspect: (prospectData) => {
@@ -218,9 +235,8 @@ export const useProspectionStore = create<ProspectionStore>()(
 
         set((state) => ({ scrapeJobs: [job, ...state.scrapeJobs] }));
 
-        // No Apify key → fall back to demo mock data
+        // Mode Démo (par défaut) : pas de clé Apify → données fictives réalistes
         if (!apiKeys.apify.trim()) {
-          // Simulate progress then generate mocks
           const totalDuration = 4000 + Math.random() * 3000;
           const intervalMs = 200;
           const steps = Math.floor(totalDuration / intervalMs);
@@ -268,7 +284,7 @@ export const useProspectionStore = create<ProspectionStore>()(
           return;
         }
 
-        // Real Apify scraping
+        // Mode Réel — Apify scraping via proxy
         const apifyKey = apiKeys.apify.trim();
         const keywordsStr = config.keywords.join(' ');
         const scrapeInput = {
@@ -278,7 +294,6 @@ export const useProspectionStore = create<ProspectionStore>()(
           maxResults: 30,
         };
 
-        // Only scrape platforms that have an Apify actor mapping
         const supportedPlatforms = config.platforms.filter(
           (p) => PLATFORM_ACTORS[p] !== undefined
         );
@@ -286,63 +301,90 @@ export const useProspectionStore = create<ProspectionStore>()(
         if (supportedPlatforms.length === 0) {
           useProspectionStore.getState().updateScrapeJob(jobId, {
             status: 'error',
-            errorMessage:
-              `Aucune des plateformes sélectionnées n'est supportée. Plateformes disponibles : LinkedIn, Google Maps, Instagram, TikTok, GitHub, Twitter, Facebook, YouTube, Crunchbase, Upwork, Indeed, ProductHunt, Malt, Le Bon Coin, Behance, Dribbble et plus.`,
+            errorMessage: 'Aucune des plateformes sélectionnées n\'est supportée.',
           });
           return;
         }
 
-        // Launch all platform runs concurrently then poll
         void (async () => {
+          const TIMEOUT_MS = 60_000; // 60 secondes max
+          const startTime = Date.now();
+
           try {
-            // Start a run per platform
+            // Lancer un run par plateforme
             const runEntries: Array<{ platform: ProspectSource; runId: string }> = [];
+            const errors: string[] = [];
 
             for (const platform of supportedPlatforms) {
               const { runId, error } = await startApifyRun(apifyKey, platform, scrapeInput);
-              if (error || !runId) continue;
+              if (error || !runId) {
+                errors.push(`${platform}: ${error || 'Pas de runId'}`);
+                continue;
+              }
               runEntries.push({ platform, runId });
             }
 
             if (runEntries.length === 0) {
+              const detail = errors.length > 0
+                ? `\n\nDétails :\n${errors.join('\n')}`
+                : '';
               useProspectionStore.getState().updateScrapeJob(jobId, {
                 status: 'error',
-                errorMessage: 'Impossible de démarrer les runs Apify. Vérifiez votre clé API.',
+                errorMessage: `Impossible de démarrer les runs Apify. Vérifiez votre clé API et la connexion réseau.${detail}`,
               });
               return;
             }
 
-            // Poll until all runs finish
+            // Polling avec timeout de 60s
             const totalRuns = runEntries.length;
             const poll = async () => {
               const stillRunning =
                 useProspectionStore.getState().scrapeJobs.find((j) => j.id === jobId)?.status === 'running';
               if (!stillRunning) return;
 
+              // Timeout → récupérer ce qu'on a et terminer
+              if (Date.now() - startTime > TIMEOUT_MS) {
+                const allProspects: ProspectContact[] = [];
+                for (const { platform, runId } of runEntries) {
+                  try {
+                    const results = await getApifyResults(apifyKey, runId, platform);
+                    allProspects.push(...results);
+                  } catch { /* ignore partial results errors */ }
+                }
+                useProspectionStore.getState().addProspects(allProspects);
+                useProspectionStore.getState().updateScrapeJob(jobId, {
+                  status: allProspects.length > 0 ? 'completed' : 'error',
+                  progress: 100,
+                  resultsCount: allProspects.length,
+                  dateCompleted: new Date().toISOString(),
+                  errorMessage: allProspects.length === 0
+                    ? 'Timeout (60s) — aucun résultat récupéré. Essayez avec moins de plateformes.'
+                    : undefined,
+                });
+                return;
+              }
+
               const statuses = await Promise.all(
                 runEntries.map(({ runId }) => checkApifyRun(apifyKey, runId))
               );
 
               const doneCount = statuses.filter(
-                (s) => s.status === 'SUCCEEDED' || s.status === 'FAILED' || s.status === 'ABORTED'
+                (s) => s.status === 'SUCCEEDED' || s.status === 'FAILED' || s.status === 'ABORTED' || s.status === 'TIMED-OUT'
               ).length;
 
               const progress = Math.min(95, Math.round((doneCount / totalRuns) * 95));
               useProspectionStore.getState().updateScrapeJob(jobId, { progress });
 
-              const allDone = doneCount === totalRuns;
-
-              if (!allDone) {
+              if (doneCount < totalRuns) {
                 setTimeout(poll, 3000);
                 return;
               }
 
-              // Collect results from succeeded runs
+              // Collecter les résultats des runs réussis
               const allProspects: ProspectContact[] = [];
-              for (const { platform, runId } of runEntries) {
-                const runStatus = statuses[runEntries.findIndex((r) => r.runId === runId)];
-                if (runStatus.status === 'SUCCEEDED') {
-                  const results = await getApifyResults(apifyKey, runId, platform);
+              for (let i = 0; i < runEntries.length; i++) {
+                if (statuses[i].status === 'SUCCEEDED') {
+                  const results = await getApifyResults(apifyKey, runEntries[i].runId, runEntries[i].platform);
                   allProspects.push(...results);
                 }
               }
@@ -358,9 +400,13 @@ export const useProspectionStore = create<ProspectionStore>()(
 
             setTimeout(poll, 3000);
           } catch (err: unknown) {
+            const message = String(err);
+            const isNetworkError = message.includes('fetch') || message.includes('network') || message.includes('ECONNREFUSED');
             useProspectionStore.getState().updateScrapeJob(jobId, {
               status: 'error',
-              errorMessage: `Erreur inattendue : ${String(err)}`,
+              errorMessage: isNetworkError
+                ? 'Erreur réseau — le proxy Apify est inaccessible. Vérifiez que Netlify Dev est lancé (npx netlify dev) ou déployez sur Netlify.'
+                : `Erreur Apify : ${message}`,
             });
           }
         })();

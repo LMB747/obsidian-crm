@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { ProspectContact, ScrapeJob, ProspectionFilter, ProspectSource, ProspectStatus, PipelineColumn } from '../types/prospection';
 import { useProspectionStore } from '../store/useProspectionStore';
+import { setCustomActorId, getCustomActorId } from '../lib/apifyService';
 
 // ─── Platform config ──────────────────────────────────────────────────────────
 const PLATFORM_CONFIG: Record<ProspectSource, { label: string; color: string }> = {
@@ -1283,19 +1284,31 @@ const TabEnrichissement: React.FC = () => {
 };
 
 // ─── TAB 4 — CONFIGURATION ───────────────────────────────────────────────────
+const EMAIL_TYPE_LABELS: Record<string, string> = {
+  premier_contact: 'Premier contact',
+  relance: 'Relance',
+  proposition: 'Proposition',
+  remerciement: 'Remerciement',
+};
+
 const TabConfiguration: React.FC = () => {
-  const { apiKeys: storedApiKeys, updateApiKeys } = useProspectionStore();
+  const { apiKeys: storedApiKeys, updateApiKeys, emailTemplates, addEmailTemplate, updateEmailTemplate, deleteEmailTemplate } = useProspectionStore();
   const [localApiKeys, setLocalApiKeys] = useState<Record<string, string>>({ ...storedApiKeys });
+  const [customActor, setCustomActor] = useState(getCustomActorId());
   const [scrapingSettings, setScrapingSettings] = useState({ delay: 2, maxResults: 50, respectRobots: true });
   const [aiSettings, setAiSettings] = useState({ model: 'gpt-4o', confidenceThreshold: 75 });
   const [exportSettings, setExportSettings] = useState({ format: 'csv' as 'csv' | 'json' | 'excel', autoExport: false });
   const [notifSettings, setNotifSettings] = useState({ onJobComplete: true, onNewProspect: false, dailyReport: true });
   const [saved, setSaved] = useState(false);
+  const [editingTpl, setEditingTpl] = useState<string | null>(null);
+  const [newTplOpen, setNewTplOpen] = useState(false);
+  const [newTpl, setNewTpl] = useState({ nom: '', sujet: '', corps: '', type: 'premier_contact' as string });
 
   const apifyMissing = !storedApiKeys.apify.trim();
 
   const handleSave = () => {
     updateApiKeys(localApiKeys as Parameters<typeof updateApiKeys>[0]);
+    setCustomActorId(customActor);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -1325,8 +1338,8 @@ const TabConfiguration: React.FC = () => {
         <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm">
           <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
           <div>
-            <span className="font-semibold">Sans clé API Apify, le scraper génère des données fictives.</span>{' '}
-            Obtenez votre clé gratuite sur{' '}
+            <span className="font-semibold">Mode Démo actif — le scraper génère des données fictives réalistes.</span>{' '}
+            Pour du scraping réel, obtenez votre clé gratuite sur{' '}
             <a href="https://apify.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-200 transition-colors">apify.com</a>
           </div>
         </div>
@@ -1356,6 +1369,23 @@ const TabConfiguration: React.FC = () => {
               />
             </div>
           ))}
+        </div>
+
+        {/* Actor ID personnalisé */}
+        <div className="mt-4 pt-4 border-t border-card-border">
+          <label className="block text-xs font-medium text-slate-400 mb-1.5">
+            Actor ID personnalisé (optionnel)
+          </label>
+          <input
+            type="text"
+            value={customActor}
+            onChange={(e) => setCustomActor(e.target.value)}
+            placeholder="ex: username/my-custom-scraper"
+            className="w-full bg-obsidian-700 border border-card-border rounded-xl px-3 py-2 text-white placeholder-slate-600 text-sm focus:outline-none focus:border-primary-500 transition-colors font-mono"
+          />
+          <p className="text-xs text-slate-500 mt-1">
+            Renseignez l'ID d'un acteur Apify spécifique pour remplacer le scraper par défaut (Google Search).
+          </p>
         </div>
       </div>
 
@@ -1511,6 +1541,154 @@ const TabConfiguration: React.FC = () => {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Email Templates */}
+      <div className="bg-card border border-card-border rounded-2xl p-5">
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
+              <Mail className="w-4 h-4 text-purple-400" />
+            </div>
+            <div>
+              <h3 className="text-white font-semibold">Templates d'emails</h3>
+              <p className="text-slate-500 text-xs">Modèles personnalisables avec placeholders</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setNewTplOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary-500/10 text-primary-400 border border-primary-500/20 hover:bg-primary-500/20 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" /> Nouveau
+          </button>
+        </div>
+
+        {/* Placeholder help */}
+        <div className="mb-4 px-3 py-2 rounded-lg bg-obsidian-900/50 border border-card-border text-xs text-slate-500">
+          Placeholders disponibles : <code className="text-primary-400">{'{{PRENOM}}'}</code>, <code className="text-primary-400">{'{{ENTREPRISE}}'}</code>, <code className="text-primary-400">{'{{NOM_AGENCE}}'}</code>, <code className="text-primary-400">{'{{PLATEFORME}}'}</code>
+        </div>
+
+        {/* Template list */}
+        <div className="space-y-3">
+          {emailTemplates.map(tpl => (
+            <div key={tpl.id} className="border border-card-border rounded-xl overflow-hidden">
+              <button
+                onClick={() => setEditingTpl(editingTpl === tpl.id ? null : tpl.id)}
+                className="w-full flex items-center justify-between p-3 text-left hover:bg-obsidian-700/30 transition-colors"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-purple-500/10 text-purple-400 border border-purple-500/20 flex-shrink-0">
+                    {EMAIL_TYPE_LABELS[tpl.type] || tpl.type}
+                  </span>
+                  <span className="text-sm text-white font-medium truncate">{tpl.nom}</span>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deleteEmailTemplate(tpl.id); }}
+                    className="p-1 text-slate-600 hover:text-red-400 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                  <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${editingTpl === tpl.id ? 'rotate-180' : ''}`} />
+                </div>
+              </button>
+
+              {editingTpl === tpl.id && (
+                <div className="px-3 pb-3 space-y-3 border-t border-card-border pt-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Nom</label>
+                    <input
+                      type="text"
+                      value={tpl.nom}
+                      onChange={e => updateEmailTemplate(tpl.id, { nom: e.target.value })}
+                      className="w-full bg-obsidian-700 border border-card-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary-500 transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Sujet</label>
+                    <input
+                      type="text"
+                      value={tpl.sujet}
+                      onChange={e => updateEmailTemplate(tpl.id, { sujet: e.target.value })}
+                      className="w-full bg-obsidian-700 border border-card-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary-500 transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Corps</label>
+                    <textarea
+                      value={tpl.corps}
+                      onChange={e => updateEmailTemplate(tpl.id, { corps: e.target.value })}
+                      rows={8}
+                      className="w-full bg-obsidian-700 border border-card-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary-500 transition-colors resize-y font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Type</label>
+                    <select
+                      value={tpl.type}
+                      onChange={e => updateEmailTemplate(tpl.id, { type: e.target.value as any })}
+                      className="w-full bg-obsidian-700 border border-card-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary-500 transition-colors"
+                    >
+                      {Object.entries(EMAIL_TYPE_LABELS).map(([val, label]) => (
+                        <option key={val} value={val}>{label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* New template form */}
+        {newTplOpen && (
+          <div className="mt-4 p-4 border border-primary-500/30 rounded-xl bg-primary-500/5 space-y-3">
+            <h4 className="text-sm font-semibold text-white">Nouveau template</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Nom</label>
+                <input type="text" value={newTpl.nom} onChange={e => setNewTpl(p => ({ ...p, nom: e.target.value }))}
+                  className="w-full bg-obsidian-700 border border-card-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary-500 transition-colors" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Type</label>
+                <select value={newTpl.type} onChange={e => setNewTpl(p => ({ ...p, type: e.target.value }))}
+                  className="w-full bg-obsidian-700 border border-card-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary-500 transition-colors">
+                  {Object.entries(EMAIL_TYPE_LABELS).map(([val, label]) => (
+                    <option key={val} value={val}>{label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">Sujet</label>
+              <input type="text" value={newTpl.sujet} onChange={e => setNewTpl(p => ({ ...p, sujet: e.target.value }))}
+                className="w-full bg-obsidian-700 border border-card-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary-500 transition-colors" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">Corps</label>
+              <textarea value={newTpl.corps} onChange={e => setNewTpl(p => ({ ...p, corps: e.target.value }))} rows={6}
+                className="w-full bg-obsidian-700 border border-card-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-primary-500 transition-colors resize-y font-mono" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => { setNewTplOpen(false); setNewTpl({ nom: '', sujet: '', corps: '', type: 'premier_contact' }); }}
+                className="px-3 py-1.5 text-xs text-slate-400 hover:text-white transition-colors">Annuler</button>
+              <button
+                onClick={() => {
+                  if (newTpl.nom && newTpl.sujet) {
+                    addEmailTemplate({ nom: newTpl.nom, sujet: newTpl.sujet, corps: newTpl.corps, type: newTpl.type as any });
+                    setNewTpl({ nom: '', sujet: '', corps: '', type: 'premier_contact' });
+                    setNewTplOpen(false);
+                  }
+                }}
+                disabled={!newTpl.nom || !newTpl.sujet}
+                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-lg bg-primary-600 text-white hover:bg-primary-500 disabled:opacity-40 transition-all"
+              >
+                <Plus className="w-3.5 h-3.5" /> Ajouter
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Save */}

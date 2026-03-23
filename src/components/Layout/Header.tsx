@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, X } from 'lucide-react';
+import { Search, X, Menu } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { useDebounce } from '../../hooks/useDebounce';
 import { NotificationCenter } from '../ui/NotificationCenter';
@@ -17,7 +17,7 @@ const sectionTitles: Record<string, { title: string; subtitle: string }> = {
   settings: { title: 'Paramètres', subtitle: 'Configuration de votre espace de travail' },
 };
 
-export const Header: React.FC = () => {
+export const Header: React.FC<{ onMenuToggle?: () => void }> = ({ onMenuToggle }) => {
   const { activeSection, setSearchQuery } = useStore();
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebounce(searchInput, 300);
@@ -31,9 +31,19 @@ export const Header: React.FC = () => {
   return (
     <header className="h-[72px] bg-obsidian-800 border-b border-card-border flex items-center justify-between px-6 sticky top-0 z-10">
       {/* ── Left: Title ───────────────────────────────────────────────────── */}
-      <div>
+      <div className="flex items-center gap-3">
+        {onMenuToggle && (
+          <button
+            onClick={onMenuToggle}
+            className="md:hidden p-2 rounded-lg text-slate-400 hover:text-white hover:bg-card transition-colors"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+        )}
+        <div>
         <h1 className="font-display font-bold text-white text-xl leading-tight">{section.title}</h1>
-        <p className="text-slate-400 text-xs">{section.subtitle}</p>
+        <p className="text-slate-400 text-xs hidden sm:block">{section.subtitle}</p>
+        </div>
       </div>
 
       {/* ── Right: Actions ────────────────────────────────────────────────── */}

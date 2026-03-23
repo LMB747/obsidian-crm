@@ -33,6 +33,10 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (p) => p.replace(/^\/api\/apify/, ''),
         },
+        '/.netlify/functions': {
+          target: 'http://localhost:8888',
+          changeOrigin: true,
+        },
       },
     },
     build: {

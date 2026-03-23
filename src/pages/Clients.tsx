@@ -1,16 +1,18 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Plus, Search, Filter, Mail, Phone, Building2,
   MoreVertical, Edit2, Trash2, Eye, Star,
-  TrendingUp, Users, UserCheck, UserX, Crown, Download
+  TrendingUp, Users, UserCheck, UserX, Crown, Download, Upload,
+  FolderOpen, FileText, Clock, MessageSquare, Activity as ActivityIcon
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { Client, ClientStatus } from '../types';
 import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { StatCard } from '../components/ui/StatCard';
-import { exportClientsCsv } from '../lib/csvExport';
+import { exportClientsCsv, parseCsv, mapCsvToClients } from '../lib/csvExport';
 import { useDebounce } from '../hooks/useDebounce';
+import { TagPicker } from '../components/ui/TagPicker';
 import clsx from 'clsx';
 
 const statusConfig: Record<ClientStatus, { label: string; variant: any; dot: string }> = {
@@ -25,8 +27,119 @@ const emptyClient: Omit<Client, 'id' | 'dateCreation' | 'derniereActivite'> = {
   statut: 'prospect', source: 'autre', tags: [], notes: '', chiffreAffaires: 0,
 };
 
+// ─── Client Activity Timeline ─────────────────────────────────────────────────
+
+interface TimelineEvent {
+  id: string;
+  type: 'projet' | 'facture' | 'activite';
+  titre: string;
+  description: string;
+  date: string;
+  icon: React.FC<{ className?: string }>;
+  color: string;
+}
+
+const ClientTimeline: React.FC<{
+  clientId: string;
+  clientNom: string;
+  projects: any[];
+  invoices: any[];
+  activities: any[];
+}> = ({ clientId, clientNom, projects, invoices, activities }) => {
+  const events = useMemo(() => {
+    const items: TimelineEvent[] = [];
+
+    // Projects for this client
+    projects
+      .filter((p) => p.clientId === clientId)
+      .forEach((p) => {
+        items.push({
+          id: `proj-${p.id}`,
+          type: 'projet',
+          titre: `Projet cree : ${p.nom}`,
+          description: `Statut : ${p.statut} — Budget : ${(p.budget || 0).toLocaleString('fr-FR')} €`,
+          date: p.dateCreation || p.dateDebut || '',
+          icon: FolderOpen,
+          color: 'text-primary-400',
+        });
+      });
+
+    // Invoices for this client
+    invoices
+      .filter((i) => i.clientId === clientId)
+      .forEach((i) => {
+        const isPaid = i.statut === 'payée';
+        items.push({
+          id: `inv-${i.id}`,
+          type: 'facture',
+          titre: `Facture ${i.numero} ${isPaid ? 'payee' : i.statut}`,
+          description: `${i.total.toLocaleString('fr-FR')} € — ${i.statut}`,
+          date: isPaid && i.datePaiement ? i.datePaiement : i.dateEmission,
+          icon: FileText,
+          color: isPaid ? 'text-accent-green' : 'text-amber-400',
+        });
+      });
+
+    // Global activities linked to this client
+    activities
+      .filter((a) => a.entityId === clientId || a.entityNom === clientNom)
+      .forEach((a) => {
+        items.push({
+          id: `act-${a.id}`,
+          type: 'activite',
+          titre: a.titre,
+          description: a.description,
+          date: a.date,
+          icon: MessageSquare,
+          color: 'text-accent-cyan',
+        });
+      });
+
+    // Sort by date descending
+    return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [clientId, clientNom, projects, invoices, activities]);
+
+  if (events.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <Clock className="w-10 h-10 mx-auto mb-3 text-slate-600" />
+        <p className="text-slate-400 text-sm">Aucune activite pour ce client</p>
+        <p className="text-slate-500 text-xs mt-1">Les projets, factures et actions apparaitront ici</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-0 relative">
+      {/* Vertical line */}
+      <div className="absolute left-[15px] top-2 bottom-2 w-px bg-card-border" />
+
+      {events.map((event) => {
+        const Icon = event.icon;
+        const dateStr = event.date
+          ? new Date(event.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
+          : '';
+
+        return (
+          <div key={event.id} className="flex gap-3 py-2.5 relative">
+            <div className={clsx('w-[30px] h-[30px] rounded-full bg-obsidian-700 border border-card-border flex items-center justify-center flex-shrink-0 z-10', event.color)}>
+              <Icon className="w-3.5 h-3.5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-white text-sm font-medium truncate">{event.titre}</p>
+              <p className="text-slate-500 text-xs truncate mt-0.5">{event.description}</p>
+              {dateStr && <p className="text-slate-600 text-[10px] mt-1">{dateStr}</p>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 export const Clients: React.FC = () => {
-  const { clients, addClient, updateClient, deleteClient, searchQuery } = useStore();
+  const { clients, addClient, updateClient, deleteClient, searchQuery, projects, invoices, activities, unifiedTags } = useStore();
+  const getTagColor = (name: string) => unifiedTags.find(t => t.name === name)?.color || '#6366f1';
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
@@ -36,6 +149,10 @@ export const Clients: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<ClientStatus | 'tous'>('tous');
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [viewTab, setViewTab] = useState<'info' | 'activite'>('info');
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importPreview, setImportPreview] = useState<Omit<Client, 'id' | 'dateCreation' | 'derniereActivite'>[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filtered = useMemo(() => {
     let list = [...clients];
@@ -73,6 +190,7 @@ export const Clients: React.FC = () => {
 
   const openView = (client: Client) => {
     setViewingClient(client);
+    setViewTab('info');
     setIsViewOpen(true);
     setActiveMenu(null);
   };
@@ -91,6 +209,28 @@ export const Clients: React.FC = () => {
     deleteClient(id);
     setConfirmDelete(null);
     setActiveMenu(null);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      const { rows } = parseCsv(text);
+      const mapped = mapCsvToClients(rows);
+      setImportPreview(mapped);
+      setImportModalOpen(true);
+    };
+    reader.readAsText(file, 'utf-8');
+    // Reset input so same file can be re-selected
+    e.target.value = '';
+  };
+
+  const handleImportConfirm = () => {
+    importPreview.forEach((c) => addClient(c));
+    setImportModalOpen(false);
+    setImportPreview([]);
   };
 
   const InputField = ({ label, name, value, onChange, type = 'text', required = false }: any) => (
@@ -139,6 +279,14 @@ export const Clients: React.FC = () => {
           ))}
         </div>
         <div className="flex items-center gap-2">
+          <input ref={fileInputRef} type="file" accept=".csv" onChange={handleFileUpload} className="hidden" />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2 border border-card-border text-slate-300 text-sm font-medium px-3 py-2 rounded-xl hover:border-accent-cyan/40 hover:text-white transition-all"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            Import CSV
+          </button>
           <button
             onClick={() => exportClientsCsv(clients)}
             className="flex items-center gap-2 border border-card-border text-slate-300 text-sm font-medium px-3 py-2 rounded-xl hover:border-primary-500/40 hover:text-white transition-all"
@@ -299,6 +447,13 @@ export const Clients: React.FC = () => {
             <input type="number" value={formData.chiffreAffaires} onChange={(e) => setFormData(p => ({ ...p, chiffreAffaires: Number(e.target.value) }))} className="w-full bg-obsidian-700 border border-card-border text-white text-sm rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-primary-500" />
           </div>
           <div>
+            <label className="block text-xs font-semibold text-slate-400 mb-1.5">Tags</label>
+            <TagPicker
+              selected={formData.tags}
+              onChange={(tags) => setFormData(p => ({ ...p, tags }))}
+            />
+          </div>
+          <div>
             <label className="block text-xs font-semibold text-slate-400 mb-1.5">Notes</label>
             <textarea value={formData.notes} onChange={(e) => setFormData(p => ({ ...p, notes: e.target.value }))} rows={3} className="w-full bg-obsidian-700 border border-card-border text-white text-sm rounded-xl px-3 py-2.5 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-primary-500 resize-none" placeholder="Notes sur ce client..." />
           </div>
@@ -317,36 +472,83 @@ export const Clients: React.FC = () => {
       {viewingClient && (
         <Modal isOpen={isViewOpen} onClose={() => setIsViewOpen(false)} title={viewingClient.nom} subtitle={viewingClient.entreprise} size="lg">
           <div className="space-y-5">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-obsidian-700 rounded-xl p-4 border border-card-border">
-                <p className="text-slate-400 text-xs mb-1">Email</p>
-                <p className="text-white text-sm font-medium">{viewingClient.email}</p>
-              </div>
-              <div className="bg-obsidian-700 rounded-xl p-4 border border-card-border">
-                <p className="text-slate-400 text-xs mb-1">Téléphone</p>
-                <p className="text-white text-sm font-medium">{viewingClient.telephone || '—'}</p>
-              </div>
-              <div className="bg-obsidian-700 rounded-xl p-4 border border-card-border">
-                <p className="text-slate-400 text-xs mb-1">Statut</p>
-                <Badge variant={statusConfig[viewingClient.statut].variant}>{statusConfig[viewingClient.statut].label}</Badge>
-              </div>
-              <div className="bg-obsidian-700 rounded-xl p-4 border border-card-border">
-                <p className="text-slate-400 text-xs mb-1">CA Total</p>
-                <p className="text-accent-green text-lg font-bold">{viewingClient.chiffreAffaires.toLocaleString('fr-FR')} €</p>
-              </div>
+            {/* Tabs */}
+            <div className="flex gap-1 bg-obsidian-700 rounded-xl p-1 border border-card-border">
+              {([['info', 'Informations'], ['activite', 'Activite']] as const).map(([tab, label]) => (
+                <button
+                  key={tab}
+                  onClick={() => setViewTab(tab)}
+                  className={clsx(
+                    'flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-semibold transition-all',
+                    viewTab === tab
+                      ? 'bg-primary-500/20 text-primary-300 border border-primary-500/30'
+                      : 'text-slate-400 hover:text-white'
+                  )}
+                >
+                  {tab === 'info' ? <Eye className="w-3.5 h-3.5" /> : <ActivityIcon className="w-3.5 h-3.5" />}
+                  {label}
+                </button>
+              ))}
             </div>
-            {viewingClient.adresse && (
-              <div className="bg-obsidian-700 rounded-xl p-4 border border-card-border">
-                <p className="text-slate-400 text-xs mb-1">Adresse</p>
-                <p className="text-white text-sm">{viewingClient.adresse}</p>
-              </div>
+
+            {viewTab === 'info' ? (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-obsidian-700 rounded-xl p-4 border border-card-border">
+                    <p className="text-slate-400 text-xs mb-1">Email</p>
+                    <p className="text-white text-sm font-medium">{viewingClient.email}</p>
+                  </div>
+                  <div className="bg-obsidian-700 rounded-xl p-4 border border-card-border">
+                    <p className="text-slate-400 text-xs mb-1">Telephone</p>
+                    <p className="text-white text-sm font-medium">{viewingClient.telephone || '—'}</p>
+                  </div>
+                  <div className="bg-obsidian-700 rounded-xl p-4 border border-card-border">
+                    <p className="text-slate-400 text-xs mb-1">Statut</p>
+                    <Badge variant={statusConfig[viewingClient.statut].variant}>{statusConfig[viewingClient.statut].label}</Badge>
+                  </div>
+                  <div className="bg-obsidian-700 rounded-xl p-4 border border-card-border">
+                    <p className="text-slate-400 text-xs mb-1">CA Total</p>
+                    <p className="text-accent-green text-lg font-bold">{viewingClient.chiffreAffaires.toLocaleString('fr-FR')} €</p>
+                  </div>
+                </div>
+                {viewingClient.adresse && (
+                  <div className="bg-obsidian-700 rounded-xl p-4 border border-card-border">
+                    <p className="text-slate-400 text-xs mb-1">Adresse</p>
+                    <p className="text-white text-sm">{viewingClient.adresse}</p>
+                  </div>
+                )}
+                {viewingClient.tags.length > 0 && (
+                  <div className="bg-obsidian-700 rounded-xl p-4 border border-card-border">
+                    <p className="text-slate-400 text-xs mb-2">Tags</p>
+                    <div className="flex flex-wrap gap-2">
+                      {viewingClient.tags.map(tag => {
+                        const c = getTagColor(tag);
+                        return (
+                          <span key={tag} className="text-xs px-2.5 py-1 rounded-lg font-medium" style={{ backgroundColor: `${c}25`, color: c, border: `1px solid ${c}40` }}>
+                            {tag}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {viewingClient.notes && (
+                  <div className="bg-obsidian-700 rounded-xl p-4 border border-card-border">
+                    <p className="text-slate-400 text-xs mb-2">Notes</p>
+                    <p className="text-slate-300 text-sm leading-relaxed">{viewingClient.notes}</p>
+                  </div>
+                )}
+              </>
+            ) : (
+              <ClientTimeline
+                clientId={viewingClient.id}
+                clientNom={viewingClient.nom}
+                projects={projects}
+                invoices={invoices}
+                activities={activities}
+              />
             )}
-            {viewingClient.notes && (
-              <div className="bg-obsidian-700 rounded-xl p-4 border border-card-border">
-                <p className="text-slate-400 text-xs mb-2">Notes</p>
-                <p className="text-slate-300 text-sm leading-relaxed">{viewingClient.notes}</p>
-              </div>
-            )}
+
             <div className="flex gap-3">
               <button onClick={() => { setIsViewOpen(false); openEdit(viewingClient); }} className="flex-1 py-2.5 rounded-xl bg-gradient-primary text-white text-sm font-semibold hover:opacity-90 transition-opacity">
                 Modifier
@@ -358,6 +560,53 @@ export const Clients: React.FC = () => {
           </div>
         </Modal>
       )}
+
+      {/* ── Import CSV Preview Modal ─────────────────────────────────────── */}
+      <Modal isOpen={importModalOpen} onClose={() => setImportModalOpen(false)} title="Importer des clients" subtitle={`${importPreview.length} client${importPreview.length > 1 ? 's' : ''} detecte${importPreview.length > 1 ? 's' : ''}`} size="lg">
+        <div className="space-y-4">
+          {importPreview.length === 0 ? (
+            <p className="text-slate-400 text-sm text-center py-6">Aucun client detecte dans le fichier CSV.</p>
+          ) : (
+            <div className="max-h-64 overflow-y-auto border border-card-border rounded-xl">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-card-border bg-obsidian-700">
+                    <th className="text-left px-3 py-2 text-xs text-slate-400 font-semibold">Nom</th>
+                    <th className="text-left px-3 py-2 text-xs text-slate-400 font-semibold">Entreprise</th>
+                    <th className="text-left px-3 py-2 text-xs text-slate-400 font-semibold">Email</th>
+                    <th className="text-left px-3 py-2 text-xs text-slate-400 font-semibold">Statut</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-card-border/50">
+                  {importPreview.slice(0, 50).map((c, i) => (
+                    <tr key={i} className="hover:bg-card-hover">
+                      <td className="px-3 py-2 text-white">{c.nom}</td>
+                      <td className="px-3 py-2 text-slate-300">{c.entreprise || '—'}</td>
+                      <td className="px-3 py-2 text-slate-400">{c.email || '—'}</td>
+                      <td className="px-3 py-2"><Badge variant={statusConfig[c.statut]?.variant || 'default'}>{c.statut}</Badge></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {importPreview.length > 50 && (
+                <p className="text-center text-slate-500 text-xs py-2">... et {importPreview.length - 50} autres</p>
+              )}
+            </div>
+          )}
+          <div className="flex gap-3">
+            <button onClick={() => setImportModalOpen(false)} className="flex-1 py-2.5 rounded-xl border border-card-border text-slate-400 text-sm font-medium hover:bg-card-hover hover:text-white transition-all">
+              Annuler
+            </button>
+            <button
+              onClick={handleImportConfirm}
+              disabled={importPreview.length === 0}
+              className="flex-1 py-2.5 rounded-xl bg-gradient-primary text-white text-sm font-semibold hover:opacity-90 transition-opacity shadow-glow-purple disabled:opacity-40"
+            >
+              Importer {importPreview.length} client{importPreview.length > 1 ? 's' : ''}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* ── Confirm Delete ───────────────────────────────────────────────── */}
       {confirmDelete && (

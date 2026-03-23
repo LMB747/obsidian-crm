@@ -2,13 +2,16 @@ import React, { useMemo } from 'react';
 import {
   Users, FolderKanban, Euro, Clock,
   Moon, AlertCircle, CheckCircle2, Briefcase,
-  ArrowUpRight, Activity, Zap, FilePlus2, FileText, Timer, AlertTriangle, TrendingUp
+  ArrowUpRight, Activity, Zap, FilePlus2, FileText, Timer, AlertTriangle, TrendingUp,
+  Target, CalendarDays
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis,
-  CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell
+  CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
+  BarChart, Bar
 } from 'recharts';
 import { useStore, selectDashboardStats } from '../store/useStore';
+import { useProspectionStore } from '../store/useProspectionStore';
 import { StatCard } from '../components/ui/StatCard';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { Badge } from '../components/ui/Badge';
@@ -91,6 +94,82 @@ export const Dashboard: React.FC = () => {
   const snoozeActifsCount = snoozeSubscriptions.filter(s => s.statut === 'actif').length
   const snoozeLastMonth = snoozeSubscriptions.filter(s => s.statut === 'actif' && s.dateDebut.startsWith(lastMonthKey)).length
   const snoozeTrend = snoozeLastMonth > 0 ? Math.round(((snoozeActifsCount - snoozeLastMonth) / snoozeLastMonth) * 100) : snoozeActifsCount > 0 ? 100 : 0
+
+  // ── KPIs enrichis (Addendum 2B) ──────────────────────────────────────────
+
+  // 1. Pipeline prospection
+  const prospects = useProspectionStore(s => s.prospects);
+  const pipelineCounts = useMemo(() => {
+    const cols = ['identifie', 'contacte', 'en_discussion', 'proposition_envoyee', 'signe', 'refuse'] as const;
+    const counts: Record<string, number> = {};
+    cols.forEach(c => { counts[c] = prospects.filter(p => p.pipelineColumn === c).length; });
+    const total = prospects.length || 1;
+    return {
+      identifie: counts.identifie,
+      contacte: counts.contacte,
+      signe: counts.signe,
+      tauxConversion: prospects.length > 0 ? Math.round((counts.signe / total) * 100) : 0,
+    };
+  }, [prospects]);
+
+  // 2. CA prévisionnel
+  const caPrevisionnel = useMemo(() =>
+    projects.filter(p => ['en cours', 'planification'].includes(p.statut)).reduce((s, p) => s + p.budget, 0)
+  , [projects]);
+
+  // 3. Charge freelancers (tâches actives par freelancer)
+  const freelancerChargeData = useMemo(() => {
+    const chargeMap = new Map<string, { nom: string; count: number }>();
+    projects.forEach(p => {
+      p.taches.filter(t => t.statut !== 'fait').forEach(t => {
+        // Check assigneAIds first, fallback to assigneA name match
+        const ids = t.assigneAIds?.length ? t.assigneAIds : [];
+        ids.forEach(fid => {
+          const f = freelancers.find(fr => fr.id === fid);
+          if (f) {
+            const key = f.id;
+            const existing = chargeMap.get(key);
+            if (existing) existing.count++;
+            else chargeMap.set(key, { nom: `${f.prenom.charAt(0)}. ${f.nom}`, count: 1 });
+          }
+        });
+        if (!ids.length && t.assigneA) {
+          const f = freelancers.find(fr => `${fr.prenom} ${fr.nom}` === t.assigneA);
+          if (f) {
+            const key = f.id;
+            const existing = chargeMap.get(key);
+            if (existing) existing.count++;
+            else chargeMap.set(key, { nom: `${f.prenom.charAt(0)}. ${f.nom}`, count: 1 });
+          }
+        }
+      });
+    });
+    return [...chargeMap.values()].sort((a, b) => b.count - a.count).slice(0, 6);
+  }, [projects, freelancers]);
+
+  // 4. Mini calendrier — 5 prochaines échéances
+  const upcomingEvents = useMemo(() => {
+    const todayStr = today.toISOString().slice(0, 10);
+    const events: { date: string; label: string; type: string; section: string }[] = [];
+
+    projects.forEach(p => {
+      if (p.dateFin >= todayStr && !['terminé', 'annulé'].includes(p.statut)) {
+        events.push({ date: p.dateFin, label: p.nom, type: 'projet', section: 'projects' });
+      }
+      p.taches?.forEach(t => {
+        if (t.dateEcheance >= todayStr && t.statut !== 'fait') {
+          events.push({ date: t.dateEcheance, label: t.titre, type: 'tâche', section: 'projects' });
+        }
+      });
+    });
+    invoices.forEach(inv => {
+      if (inv.dateEcheance >= todayStr && inv.statut !== 'payée' && inv.statut !== 'annulée') {
+        events.push({ date: inv.dateEcheance, label: `${inv.numero} — ${inv.clientNom}`, type: 'facture', section: 'invoices' });
+      }
+    });
+
+    return events.sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5);
+  }, [projects, invoices, today]);
 
   // Graphe revenus : 6 derniers mois depuis les vraies factures
   const monthlyChartData = useMemo(() => {
@@ -558,6 +637,106 @@ export const Dashboard: React.FC = () => {
             <p className="text-center text-slate-600 text-xs mt-3">
               + {activities.length - 7} autre{activities.length - 7 !== 1 ? 's' : ''} activité{activities.length - 7 !== 1 ? 's' : ''}
             </p>
+          )}
+        </div>
+      </div>
+
+      {/* ── KPIs Enrichis ─────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          title="CA Prévisionnel"
+          value={caPrevisionnel >= 1000 ? `${(caPrevisionnel / 1000).toFixed(1)}k€` : `${caPrevisionnel}€`}
+          subtitle="Projets en cours + planification"
+          icon={Target}
+          color="purple"
+        />
+        <StatCard
+          title="Conversion Prospection"
+          value={`${pipelineCounts.tauxConversion}%`}
+          subtitle={`${pipelineCounts.signe} signé${pipelineCounts.signe > 1 ? 's' : ''} / ${prospects.length} prospects`}
+          icon={TrendingUp}
+          color="green"
+        />
+        <StatCard
+          title="Pipeline Actif"
+          value={pipelineCounts.contacte + pipelineCounts.identifie}
+          subtitle={`${pipelineCounts.identifie} identifiés · ${pipelineCounts.contacte} contactés`}
+          icon={Users}
+          color="cyan"
+        />
+        <StatCard
+          title="Prochaines Échéances"
+          value={upcomingEvents.length}
+          subtitle={upcomingEvents.length > 0 ? `Prochaine: ${new Date(upcomingEvents[0].date + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}` : 'Aucune échéance'}
+          icon={CalendarDays}
+          color="orange"
+        />
+      </div>
+
+      {/* ── Charge Freelancers + Mini Calendrier ─────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Charge par freelancer */}
+        <div className="bg-card border border-card-border rounded-2xl p-5">
+          <h3 className="font-display font-bold text-white mb-1">Charge Prestataires</h3>
+          <p className="text-slate-400 text-xs mb-4">Tâches actives par freelancer</p>
+          {freelancerChargeData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={freelancerChargeData} layout="vertical" margin={{ left: 10, right: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e1e42" horizontal={false} />
+                <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <YAxis type="category" dataKey="nom" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} width={90} />
+                <Tooltip contentStyle={{ background: '#0e0e22', border: '1px solid #1e1e42', borderRadius: '8px', color: '#fff', fontSize: '12px' }} />
+                <Bar dataKey="count" name="Tâches" fill="#7c3aed" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-[200px] text-slate-500">
+              <Briefcase className="w-8 h-8 mb-2 opacity-20" />
+              <p className="text-sm">Aucune tâche assignée</p>
+            </div>
+          )}
+        </div>
+
+        {/* Mini calendrier — 5 prochaines échéances */}
+        <div className="bg-card border border-card-border rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="font-display font-bold text-white">Prochaines Échéances</h3>
+              <p className="text-slate-400 text-xs">5 prochains événements</p>
+            </div>
+            <button onClick={() => setActiveSection('calendar')} className="text-xs text-primary-400 hover:text-primary-300 flex items-center gap-1 transition-colors">
+              Calendrier <ArrowUpRight className="w-3 h-3" />
+            </button>
+          </div>
+          {upcomingEvents.length > 0 ? (
+            <div className="space-y-2">
+              {upcomingEvents.map((ev, i) => {
+                const typeColor = ev.type === 'projet' ? 'text-purple-400 bg-purple-500/10 border-purple-500/20' : ev.type === 'facture' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' : 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20';
+                const dotColor = ev.type === 'projet' ? 'bg-purple-500' : ev.type === 'facture' ? 'bg-emerald-500' : 'bg-cyan-500';
+                return (
+                  <button
+                    key={`${ev.type}-${i}`}
+                    onClick={() => setActiveSection(ev.section)}
+                    className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-obsidian-700/50 transition-colors text-left group"
+                  >
+                    <div className="text-center flex-shrink-0 w-10">
+                      <p className="text-white text-sm font-bold leading-tight">{new Date(ev.date + 'T00:00:00').getDate()}</p>
+                      <p className="text-slate-500 text-[10px] uppercase">{new Date(ev.date + 'T00:00:00').toLocaleDateString('fr-FR', { month: 'short' })}</p>
+                    </div>
+                    <div className={`w-1 h-8 rounded-full ${dotColor} flex-shrink-0`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-xs font-semibold truncate group-hover:text-primary-300 transition-colors">{ev.label}</p>
+                      <p className="text-slate-500 text-[10px] capitalize">{ev.type}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-[200px] text-slate-500">
+              <CalendarDays className="w-8 h-8 mb-2 opacity-20" />
+              <p className="text-sm">Aucune échéance à venir</p>
+            </div>
           )}
         </div>
       </div>

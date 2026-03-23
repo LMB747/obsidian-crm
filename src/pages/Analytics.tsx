@@ -1,8 +1,9 @@
 import React, { useMemo } from 'react';
-import { TrendingUp, Users, Euro, Moon, BarChart3, PieChart as PieChartIcon, DollarSign, AlertTriangle, Clock, TrendingDown } from 'lucide-react';
+import { TrendingUp, Users, Euro, Moon, BarChart3, PieChart as PieChartIcon, DollarSign, AlertTriangle, Clock, TrendingDown, Target, Activity } from 'lucide-react';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, RadarChart, Radar, PolarGrid, PolarAngleAxis
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, RadarChart, Radar, PolarGrid, PolarAngleAxis,
+  LineChart, Line
 } from 'recharts';
 import { useStore } from '../store/useStore';
 import { StatCard } from '../components/ui/StatCard';
@@ -192,6 +193,96 @@ export const Analytics: React.FC = () => {
   );
 
   const { setActiveSection } = useStore();
+
+  // ═══ STATISTIQUES AVANCÉES ═══════════════════════════════════════════════
+
+  // ── A. CA par client Top 10 ─────────────────────────────────────────────
+  const topClientsCA = useMemo(() =>
+    [...clients]
+      .sort((a, b) => b.chiffreAffaires - a.chiffreAffaires)
+      .slice(0, 10)
+      .map(c => ({ nom: c.nom.length > 15 ? c.nom.slice(0, 15) + '…' : c.nom, ca: c.chiffreAffaires }))
+  , [clients]);
+
+  // ── B. CA par mois — courbe 12 mois ────────────────────────────────────
+  const caParMois = useMemo(() => {
+    return Array.from({ length: 12 }, (_, i) => {
+      const d = new Date();
+      d.setMonth(d.getMonth() - (11 - i), 1);
+      const key = d.toISOString().slice(0, 7);
+      const label = d.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' });
+      const ca = invoices
+        .filter(inv => inv.statut === 'payée' && (inv.datePaiement ?? inv.dateEmission).startsWith(key))
+        .reduce((s, inv) => s + inv.total, 0);
+      return { mois: label, CA: Math.round(ca) };
+    });
+  }, [invoices]);
+
+  // ── C. Taux occupation freelancers ──────────────────────────────────────
+  const freelancerOccupation = useMemo(() => {
+    return freelancers.map(f => {
+      const assignedTasks = projects.flatMap(p =>
+        p.taches.filter(t => t.assigneAIds?.includes(f.id) || t.assigneA === `${f.prenom} ${f.nom}`)
+      );
+      const heuresEstimees = assignedTasks.reduce((s, t) => s + t.heuresEstimees, 0);
+      const heuresReelles = assignedTasks.reduce((s, t) => s + t.heuresReelles, 0);
+      const taux = heuresEstimees > 0 ? Math.round((heuresReelles / heuresEstimees) * 100) : 0;
+      return {
+        nom: `${f.prenom} ${f.nom}`.length > 18 ? `${f.prenom.charAt(0)}. ${f.nom}` : `${f.prenom} ${f.nom}`,
+        taux,
+        heuresReelles,
+        heuresEstimees,
+        statut: f.statut,
+      };
+    }).sort((a, b) => b.taux - a.taux).slice(0, 8);
+  }, [freelancers, projects]);
+
+  // ── D. Pipeline conversion prospection ──────────────────────────────────
+  const pipelineData = useMemo(() => {
+    const total = clients.length;
+    const prospects = clients.filter(c => c.statut === 'prospect').length;
+    const actifs = clients.filter(c => c.statut === 'actif').length;
+    const vip = clients.filter(c => c.statut === 'vip').length;
+    const inactifs = clients.filter(c => c.statut === 'inactif').length;
+    return [
+      { etape: 'Prospects', count: prospects, pct: total > 0 ? Math.round((prospects / total) * 100) : 0, color: '#64748b' },
+      { etape: 'Actifs', count: actifs, pct: total > 0 ? Math.round((actifs / total) * 100) : 0, color: '#06b6d4' },
+      { etape: 'VIP', count: vip, pct: total > 0 ? Math.round((vip / total) * 100) : 0, color: '#7c3aed' },
+      { etape: 'Inactifs', count: inactifs, pct: total > 0 ? Math.round((inactifs / total) * 100) : 0, color: '#ef4444' },
+    ];
+  }, [clients]);
+
+  // ── E. Répartition projets par statut — Pie ────────────────────────────
+  const projectStatusData = useMemo(() => {
+    const statusColors: Record<string, string> = {
+      'planification': '#64748b',
+      'en cours': '#06b6d4',
+      'en révision': '#f59e0b',
+      'terminé': '#10b981',
+      'en pause': '#8b5cf6',
+      'annulé': '#ef4444',
+    };
+    return Object.entries(
+      projects.reduce((acc, p) => {
+        acc[p.statut] = (acc[p.statut] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>)
+    ).map(([name, value]) => ({ name, value, color: statusColors[name] || '#64748b' }));
+  }, [projects]);
+
+  // ── F. Budget prévu vs réel ─────────────────────────────────────────────
+  const budgetData = useMemo(() =>
+    projects
+      .filter(p => p.budget > 0 || p.depenses > 0)
+      .sort((a, b) => b.budget - a.budget)
+      .slice(0, 8)
+      .map(p => ({
+        nom: p.nom.length > 15 ? p.nom.slice(0, 15) + '…' : p.nom,
+        budget: p.budget,
+        depenses: p.depenses,
+        ecart: p.budget - p.depenses,
+      }))
+  , [projects]);
 
   return (
     <div className="space-y-6">
@@ -423,6 +514,153 @@ export const Analytics: React.FC = () => {
             />
           )}
         </div>
+      </div>
+
+      {/* ═══ STATISTIQUES AVANCÉES ═══════════════════════════════════════════ */}
+      <div className="border-t border-card-border my-8" />
+      <h2 className="text-xl font-display font-bold text-white mb-6">Statistiques Avancées</h2>
+
+      {/* CA par mois — courbe 12 mois */}
+      <div className="bg-card border border-card-border rounded-2xl p-5 mb-6">
+        <h3 className="font-display font-bold text-white mb-1">Chiffre d'Affaires par Mois</h3>
+        <p className="text-slate-400 text-xs mb-4">Évolution du CA sur 12 mois (factures payées)</p>
+        <ResponsiveContainer width="100%" height={280}>
+          <AreaChart data={caParMois} margin={{ left: -20, right: 10 }}>
+            <defs>
+              <linearGradient id="caGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.4} />
+                <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e1e42" vertical={false} />
+            <XAxis dataKey="mois" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+            <Tooltip content={<CustomTooltip />} />
+            <Area type="monotone" dataKey="CA" stroke="#7c3aed" fill="url(#caGradient)" strokeWidth={2} name="CA" />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        {/* CA par client Top 10 */}
+        <div className="bg-card border border-card-border rounded-2xl p-5">
+          <h3 className="font-display font-bold text-white mb-1">Top 10 Clients par CA</h3>
+          <p className="text-slate-400 text-xs mb-4">Chiffre d'affaires total par client</p>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={topClientsCA} layout="vertical" margin={{ left: 10, right: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e1e42" horizontal={false} />
+              <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+              <YAxis type="category" dataKey="nom" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} width={120} />
+              <Tooltip content={<CustomTooltip />} />
+              <Bar dataKey="ca" name="CA" fill="#7c3aed" radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Répartition projets par statut */}
+        <div className="bg-card border border-card-border rounded-2xl p-5">
+          <h3 className="font-display font-bold text-white mb-1">Projets par Statut</h3>
+          <p className="text-slate-400 text-xs mb-4">Répartition des {projects.length} projets</p>
+          <ResponsiveContainer width="100%" height={200}>
+            <PieChart>
+              <Pie data={projectStatusData} cx="50%" cy="50%" outerRadius={80} innerRadius={40} paddingAngle={3} dataKey="value">
+                {projectStatusData.map((entry) => (
+                  <Cell key={entry.name} fill={entry.color} stroke="transparent" />
+                ))}
+              </Pie>
+              <Tooltip contentStyle={{ background: '#0e0e22', border: '1px solid #1e1e42', borderRadius: '8px', color: '#fff', fontSize: '12px' }} />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="grid grid-cols-2 gap-2 mt-3">
+            {projectStatusData.map((entry) => (
+              <div key={entry.name} className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: entry.color }} />
+                <span className="text-slate-400 text-xs capitalize">{entry.name}</span>
+                <span className="text-white text-xs font-semibold ml-auto">{entry.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        {/* Pipeline conversion */}
+        <div className="bg-card border border-card-border rounded-2xl p-5">
+          <h3 className="font-display font-bold text-white mb-1">Pipeline Conversion</h3>
+          <p className="text-slate-400 text-xs mb-4">Funnel prospect → VIP</p>
+          <div className="space-y-3">
+            {pipelineData.map(stage => (
+              <div key={stage.etape}>
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-slate-300 font-medium">{stage.etape}</span>
+                  <span className="text-slate-400">{stage.count} ({stage.pct}%)</span>
+                </div>
+                <div className="w-full bg-obsidian-900 rounded-full h-2.5">
+                  <div
+                    className="h-2.5 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.max(stage.pct, 2)}%`, background: stage.color }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 pt-3 border-t border-card-border flex justify-between text-xs">
+            <span className="text-slate-400">Taux de conversion Prospect → Actif/VIP</span>
+            <span className="text-accent-green font-bold">
+              {clients.length > 0
+                ? `${Math.round(((clients.filter(c => c.statut === 'actif' || c.statut === 'vip').length) / clients.length) * 100)}%`
+                : '—'}
+            </span>
+          </div>
+        </div>
+
+        {/* Taux occupation freelancers */}
+        <div className="bg-card border border-card-border rounded-2xl p-5">
+          <h3 className="font-display font-bold text-white mb-1">Taux d'Occupation Prestataires</h3>
+          <p className="text-slate-400 text-xs mb-4">Heures réelles / heures estimées</p>
+          <div className="space-y-3">
+            {freelancerOccupation.length > 0 ? freelancerOccupation.map(f => (
+              <div key={f.nom}>
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-slate-300 font-medium">{f.nom}</span>
+                  <span className={`font-semibold ${f.taux > 100 ? 'text-red-400' : f.taux > 70 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {f.taux}%
+                  </span>
+                </div>
+                <div className="w-full bg-obsidian-900 rounded-full h-2">
+                  <div
+                    className={`h-2 rounded-full transition-all duration-500 ${f.taux > 100 ? 'bg-red-500' : f.taux > 70 ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                    style={{ width: `${Math.min(f.taux, 100)}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-slate-500 mt-0.5">{f.heuresReelles}h réelles / {f.heuresEstimees}h estimées</p>
+              </div>
+            )) : (
+              <p className="text-xs text-slate-500 italic">Aucune donnée d'assignation disponible</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Budget prévu vs réel */}
+      <div className="bg-card border border-card-border rounded-2xl p-5 mb-6">
+        <h3 className="font-display font-bold text-white mb-1">Budget Prévu vs Réel</h3>
+        <p className="text-slate-400 text-xs mb-4">Comparaison budget / dépenses par projet</p>
+        {budgetData.length > 0 ? (
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={budgetData} margin={{ left: -10, right: 10 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e1e42" vertical={false} />
+              <XAxis dataKey="nom" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} interval={0} angle={-20} textAnchor="end" height={60} />
+              <YAxis tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+              <Tooltip content={<CustomTooltip />} />
+              <Legend formatter={(v) => <span className="text-slate-400 text-xs">{v}</span>} />
+              <Bar dataKey="budget" name="Budget prévu" fill="#7c3aed" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="depenses" name="Dépenses réelles" fill="#06b6d4" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <p className="text-xs text-slate-500 italic">Aucun projet avec budget défini</p>
+        )}
       </div>
 
       {/* Prestataires & Ressources */}

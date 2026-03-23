@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bell, CheckCheck, X, Info, CheckCircle2, AlertTriangle, AlertCircle } from 'lucide-react';
+import { Bell, CheckCheck, X, Info, CheckCircle2, AlertTriangle, AlertCircle, ArrowRight } from 'lucide-react';
 import clsx from 'clsx';
 import { useStore } from '../../store/useStore';
 
@@ -13,7 +13,7 @@ const TYPE_CONFIG = {
 export const NotificationCenter: React.FC = () => {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const { notifications, markNotificationRead, markAllNotificationsRead } = useStore();
+  const { notifications, markNotificationRead, markAllNotificationsRead, setActiveSection } = useStore();
 
   const unreadCount = notifications.filter(n => !n.lu).length;
 
@@ -85,7 +85,13 @@ export const NotificationCenter: React.FC = () => {
                 return (
                   <div
                     key={notif.id}
-                    onClick={() => markNotificationRead(notif.id)}
+                    onClick={() => {
+                      markNotificationRead(notif.id);
+                      if (notif.section) {
+                        setActiveSection(notif.section);
+                        setOpen(false);
+                      }
+                    }}
                     className={clsx(
                       'flex items-start gap-3 px-4 py-3 border-b border-card-border/50 cursor-pointer hover:bg-white/[0.03] transition-all',
                       !notif.lu && 'bg-primary-500/5'
@@ -108,6 +114,9 @@ export const NotificationCenter: React.FC = () => {
                         {new Date(notif.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
+                    {notif.section && (
+                      <ArrowRight className="w-3.5 h-3.5 text-slate-600 flex-shrink-0 mt-1" />
+                    )}
                   </div>
                 );
               })

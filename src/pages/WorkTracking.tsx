@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
-import { Clock, CheckSquare, AlertCircle, BarChart3, Calendar, TrendingUp, Download } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { Clock, CheckSquare, AlertCircle, BarChart3, Calendar, TrendingUp, Download, Euro } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import { useStore } from '../store/useStore';
 import { Badge } from '../components/ui/Badge';
 import { ProgressBar } from '../components/ui/ProgressBar';
@@ -24,7 +24,7 @@ const priorityColors: Record<string, string> = {
 };
 
 export const WorkTracking: React.FC = () => {
-  const { projects, timerSessions } = useStore();
+  const { projects, timerSessions, freelancers } = useStore();
 
   const allTasks = useMemo(() => {
     return projects.flatMap(p =>
@@ -72,6 +72,55 @@ export const WorkTracking: React.FC = () => {
     .slice(0, 8);
 
   const inProgressTasks = allTasks.filter(t => t.statut === 'en cours').slice(0, 6);
+
+  // ── Weekly Hours Chart (last 8 weeks) ──────────────────────────────────────
+  const weeklyHours = useMemo(() => {
+    const weeks: { label: string; heures: number }[] = [];
+    const now = new Date();
+    for (let w = 7; w >= 0; w--) {
+      const weekStart = new Date(now);
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1 - w * 7); // Monday
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      const startStr = weekStart.toISOString().split('T')[0];
+      const endStr = weekEnd.toISOString().split('T')[0];
+      const totalMin = timerSessions
+        .filter(s => s.date >= startStr && s.date <= endStr)
+        .reduce((sum, s) => sum + s.dureeMinutes, 0);
+      const label = `${weekStart.getDate()}/${weekStart.getMonth() + 1}`;
+      weeks.push({ label, heures: Math.round(totalMin / 60 * 10) / 10 });
+    }
+    return weeks;
+  }, [timerSessions]);
+
+  // ── Real-time Cost per Project ────────────────────────────────────────────
+  const projectCosts = useMemo(() => {
+    return projects
+      .filter(p => p.statut === 'en cours' || p.statut === 'planification')
+      .map(p => {
+        const timerHours = timerSessions
+          .filter(s => s.projectId === p.id)
+          .reduce((sum, s) => sum + s.dureeMinutes, 0) / 60;
+        const taskHours = p.taches.reduce((sum, t) => sum + t.heuresReelles, 0);
+        const totalHours = timerHours + taskHours;
+        // Calculate cost from assigned freelancers
+        const assignedFreelancers = freelancers.filter(f => (p.freelancerIds || []).includes(f.id));
+        const avgTjm = assignedFreelancers.length > 0
+          ? assignedFreelancers.reduce((s, f) => s + f.tjm, 0) / assignedFreelancers.length
+          : 0;
+        const cost = (totalHours / 8) * avgTjm; // TJM = per day (8h)
+        return {
+          nom: p.nom.length > 18 ? p.nom.slice(0, 18) + '…' : p.nom,
+          heures: Math.round(totalHours * 10) / 10,
+          cout: Math.round(cost),
+          budget: p.budget,
+        };
+      })
+      .filter(p => p.heures > 0 || p.budget > 0);
+  }, [projects, timerSessions, freelancers]);
+
+  const totalWeeklyHours = weeklyHours.length > 0 ? weeklyHours[weeklyHours.length - 1].heures : 0;
+  const totalCost = projectCosts.reduce((s, p) => s + p.cout, 0);
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -264,6 +313,77 @@ export const WorkTracking: React.FC = () => {
         <WorkTimer />
         <div className="lg:col-span-2">
           <TimerHistory />
+        </div>
+      </div>
+
+      {/* ── Weekly Report + Cost ───────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Weekly Hours */}
+        <div className="bg-card border border-card-border rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="font-display font-bold text-white">Rapport Hebdomadaire</h3>
+              <p className="text-slate-400 text-xs">Heures par semaine (8 dernières semaines)</p>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-display font-bold text-primary-400">{totalWeeklyHours}h</p>
+              <p className="text-slate-500 text-[10px]">cette semaine</p>
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={180}>
+            <AreaChart data={weeklyHours} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+              <defs>
+                <linearGradient id="weeklyGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#7c3aed" stopOpacity={0.3} />
+                  <stop offset="100%" stopColor="#7c3aed" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e1e42" vertical={false} />
+              <XAxis dataKey="label" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `${v}h`} />
+              <Tooltip contentStyle={{ background: '#0e0e22', border: '1px solid #1e1e42', borderRadius: '8px', color: '#fff' }} formatter={(v: number) => [`${v}h`, 'Heures']} />
+              <Area type="monotone" dataKey="heures" stroke="#7c3aed" fill="url(#weeklyGrad)" strokeWidth={2} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Real-time Cost */}
+        <div className="bg-card border border-card-border rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="font-display font-bold text-white">Coût Temps Réel</h3>
+              <p className="text-slate-400 text-xs">Basé sur le TJM des prestataires</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Euro className="w-5 h-5 text-emerald-400" />
+              <p className="text-2xl font-display font-bold text-emerald-400">{totalCost.toLocaleString('fr-FR')} €</p>
+            </div>
+          </div>
+          <div className="space-y-3">
+            {projectCosts.length === 0 && (
+              <p className="text-slate-500 text-sm text-center py-6">Aucune donnée de coût</p>
+            )}
+            {projectCosts.map((p) => {
+              const pct = p.budget > 0 ? Math.round((p.cout / p.budget) * 100) : 0;
+              const isOver = pct > 100;
+              return (
+                <div key={p.nom} className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-white font-medium">{p.nom}</span>
+                    <span className="text-slate-400">{p.heures}h · <span className={isOver ? 'text-accent-red font-semibold' : 'text-emerald-400'}>{p.cout.toLocaleString('fr-FR')} €</span>{p.budget > 0 && <span className="text-slate-500"> / {p.budget.toLocaleString('fr-FR')} €</span>}</span>
+                  </div>
+                  {p.budget > 0 && (
+                    <div className="w-full h-1.5 bg-obsidian-700 rounded-full overflow-hidden">
+                      <div
+                        className={clsx('h-full rounded-full transition-all', isOver ? 'bg-accent-red' : pct > 70 ? 'bg-amber-400' : 'bg-emerald-400')}
+                        style={{ width: `${Math.min(pct, 100)}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 

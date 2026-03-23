@@ -218,6 +218,13 @@ export interface Activity {
   icon?: string;
 }
 
+// ─── TAG UNIFIÉ ──────────────────────────────────────────────────────────────
+export interface UnifiedTag {
+  id: string;
+  name: string;
+  color: string; // tailwind-compatible hex, e.g. '#8b5cf6'
+}
+
 // ─── STATS ────────────────────────────────────────────────────────────────────
 export interface MonthlyRevenue {
   mois: string;
@@ -253,6 +260,9 @@ export interface CRMStore {
   timerSessions: TimerSession[];
   workspaces: Workspace[];
   invitations: Invitation[];
+
+  // Tags
+  unifiedTags: UnifiedTag[];
 
   // Settings
   settings: AgencySettings;
@@ -314,6 +324,11 @@ export interface CRMStore {
   updateSubCategory: (projectId: string, subId: string, updates: Partial<ProjectSubCategory>) => void;
   deleteSubCategory: (projectId: string, subId: string) => void;
 
+  // Actions — Tags
+  addUnifiedTag: (tag: Omit<UnifiedTag, 'id'>) => UnifiedTag;
+  updateUnifiedTag: (id: string, updates: Partial<UnifiedTag>) => void;
+  deleteUnifiedTag: (id: string) => void;
+
   // Actions — Settings
   updateSettings: (updates: Partial<AgencySettings>) => void;
 
@@ -356,6 +371,7 @@ export interface Notification {
   type: 'info' | 'success' | 'warning' | 'error';
   lu: boolean;
   date: string;
+  section?: string;
 }
 
 // ─── AGENCY SETTINGS ──────────────────────────────────────────────────────────

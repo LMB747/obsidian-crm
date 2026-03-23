@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, FolderKanban, FileText,
   Moon, Settings, ChevronLeft, ChevronRight,
   Zap, BarChart3, Bell, LogOut, Clock, FilePlus2, Briefcase,
-  Shield, Target, TrendingUp, ScanSearch
+  Shield, Target, TrendingUp, ScanSearch, CalendarDays
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { SectionPermission } from '../../types';
@@ -18,6 +18,7 @@ const navItems: { id: string; label: string; icon: React.FC<{ className?: string
   { id: 'invoices',     label: 'Facturation',    icon: FileText,        badge: '1'  },
   { id: 'documents',    label: 'Documents',      icon: FilePlus2,       badge: null },
   { id: 'snooze',       label: 'Pay to Snooze',  icon: Moon,            badge: null },
+  { id: 'calendar',     label: 'Calendrier',     icon: CalendarDays,    badge: null },
   { id: 'analytics',    label: 'Analytiques',    icon: BarChart3,       badge: null },
   { id: 'media-buying', label: 'Media Buying',   icon: TrendingUp,      badge: null },
   { id: 'prospection',  label: 'Prospection IA', icon: ScanSearch,      badge: 'IA' },
@@ -29,12 +30,17 @@ const ROLE_LABELS: Record<string, string> = {
   viewer: 'Observateur',
 };
 
-export const Sidebar: React.FC = () => {
+export const Sidebar: React.FC<{ onNavigate?: () => void }> = ({ onNavigate }) => {
   const {
     activeSection, setActiveSection,
     sidebarOpen, setSidebarOpen,
     currentUser, logout,
   } = useStore();
+
+  const navigate = (section: string) => {
+    setActiveSection(section);
+    onNavigate?.();
+  };
 
   // Filter nav items based on permissions
   const visibleNavItems = navItems.filter(item => {
@@ -92,7 +98,7 @@ export const Sidebar: React.FC = () => {
         {/* Mes Missions button for freelancers */}
         {currentUser?.role === 'freelancer' && (
           <button
-            onClick={() => setActiveSection('freelancer-portal')}
+            onClick={() => navigate('freelancer-portal')}
             className={clsx(
               'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative mb-2',
               activeSection === 'freelancer-portal'
@@ -124,7 +130,7 @@ export const Sidebar: React.FC = () => {
           return (
             <button
               key={item.id}
-              onClick={() => setActiveSection(item.id)}
+              onClick={() => navigate(item.id)}
               className={clsx(
                 'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative',
                 isActive
@@ -164,7 +170,7 @@ export const Sidebar: React.FC = () => {
         {/* Admin button (admin role only) */}
         {currentUser?.role === 'admin' && (
           <button
-            onClick={() => setActiveSection('admin')}
+            onClick={() => navigate('admin')}
             className={clsx(
               'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group',
               activeSection === 'admin'
@@ -186,7 +192,7 @@ export const Sidebar: React.FC = () => {
         {/* Settings button */}
         {(!currentUser || currentUser.permissions.includes('settings')) && (
           <button
-            onClick={() => setActiveSection('settings')}
+            onClick={() => navigate('settings')}
             className={clsx(
               'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group',
               activeSection === 'settings'

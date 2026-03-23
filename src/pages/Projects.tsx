@@ -6,7 +6,7 @@ import {
   Edit2, Trash2, Target, ArrowUpRight, BarChart3,
   List, Columns, AlertTriangle, Download, Search, X,
   Activity, MessageSquare, FolderPlus, ArrowRight, Flag, FileText,
-  Crosshair, Layers, Tag, Package, Wallet
+  Crosshair, Layers, Tag, Package, Wallet, GanttChart
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { Project, ProjectStatus, Task, Freelancer, Objective, ProjectSubCategory, Livrable, LivrableType, LivrableStatut, DepenseProjet } from '../types';
@@ -16,6 +16,7 @@ import { Modal } from '../components/ui/Modal';
 import { StatCard } from '../components/ui/StatCard';
 import { exportProjectsCSV } from '../utils/csvExport';
 import { useDebounce } from '../hooks/useDebounce';
+import { TagPicker } from '../components/ui/TagPicker';
 import clsx from 'clsx';
 
 const statusConfig: Record<ProjectStatus, { label: string; variant: any; icon: React.FC<any>; color: string }> = {
@@ -25,6 +26,11 @@ const statusConfig: Record<ProjectStatus, { label: string; variant: any; icon: R
   'terminé':       { label: 'Terminé',       variant: 'success', icon: CheckCircle2,  color: 'text-emerald-400' },
   'en pause':      { label: 'En pause',      variant: 'default', icon: Pause,         color: 'text-slate-400' },
   'annulé':        { label: 'Annulé',        variant: 'error',   icon: AlertCircle,   color: 'text-red-400' },
+};
+
+const statusHex: Record<ProjectStatus, string> = {
+  'planification': '#06b6d4', 'en cours': '#7c3aed', 'en révision': '#f59e0b',
+  'terminé': '#10b981', 'en pause': '#64748b', 'annulé': '#ef4444',
 };
 
 const taskStatusConfig = {
@@ -106,6 +112,7 @@ const defaultNewProject = {
   dateDebut: today,
   dateFin: '',
   budget: 0,
+  tags: [] as string[],
 };
 
 // ─── ProjectTeam ─────────────────────────────────────────────────────────────
@@ -256,10 +263,11 @@ export const Projects: React.FC = () => {
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [expandedProject, setExpandedProject] = useState<string | null>(projects[0]?.id || null);
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'tous'>('tous');
-  const [view, setView] = useState<'list' | 'kanban'>('list');
+  const [view, setView] = useState<'list' | 'kanban' | 'gantt'>('list');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [addTaskModal, setAddTaskModal] = useState<string | null>(null);
-  const [newTask, setNewTask] = useState({ titre: '', description: '', assigneA: '', dateEcheance: '', heuresEstimees: 8, priorite: 'normale' as Task['priorite'], statut: 'todo' as Task['statut'], tags: [] as string[] });
+  const [newTask, setNewTask] = useState({ titre: '', description: '', assigneA: '', assigneAIds: [] as string[], dateEcheance: '', heuresEstimees: 8, priorite: 'normale' as Task['priorite'], statut: 'todo' as Task['statut'], tags: [] as string[] });
+  const [taskFreelancerFilter, setTaskFreelancerFilter] = useState<string>('all');
   const [projectTab, setProjectTab] = useState<Record<string, 'tasks' | 'equipe' | 'objectives' | 'timeline' | 'livrables' | 'budget'>>({});
 
   // Objectives modal
@@ -292,6 +300,7 @@ export const Projects: React.FC = () => {
       dateDebut: project.dateDebut,
       dateFin: project.dateFin,
       budget: project.budget,
+      tags: [...(project.tags || [])],
     });
     setIsEditModalOpen(true);
   };
@@ -311,6 +320,7 @@ export const Projects: React.FC = () => {
       dateDebut: editProject.dateDebut,
       dateFin: editProject.dateFin,
       budget: editProject.budget,
+      tags: editProject.tags,
     });
     setIsEditModalOpen(false);
     setEditProjectId(null);
@@ -342,7 +352,7 @@ export const Projects: React.FC = () => {
       milestones: [],
       equipe: [],
       freelancerIds: [],
-      tags: [],
+      tags: newProject.tags,
       activityLog: [],
     });
     setIsAddModalOpen(false);
@@ -408,7 +418,7 @@ export const Projects: React.FC = () => {
   const handleAddTask = (projectId: string) => {
     addTask(projectId, { ...newTask, heuresReelles: 0, notes: [] });
     setAddTaskModal(null);
-    setNewTask({ titre: '', description: '', assigneA: '', dateEcheance: '', heuresEstimees: 8, priorite: 'normale', statut: 'todo', tags: [] });
+    setNewTask({ titre: '', description: '', assigneA: '', assigneAIds: [], dateEcheance: '', heuresEstimees: 8, priorite: 'normale', statut: 'todo', tags: [] });
   };
 
   return (
@@ -466,6 +476,12 @@ export const Projects: React.FC = () => {
               className={view === 'kanban' ? 'bg-primary-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold' : 'text-slate-400 px-3 py-1.5 text-xs'}
             >
               <Columns className="w-3.5 h-3.5 inline mr-1" /> Kanban
+            </button>
+            <button
+              onClick={() => setView('gantt')}
+              className={view === 'gantt' ? 'bg-primary-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold' : 'text-slate-400 px-3 py-1.5 text-xs'}
+            >
+              <GanttChart className="w-3.5 h-3.5 inline mr-1" /> Gantt
             </button>
           </div>
           {/* Export CSV Button */}
@@ -555,6 +571,122 @@ export const Projects: React.FC = () => {
           })}
         </div>
       )}
+
+      {/* ── Gantt View ──────────────────────────────────────────────────── */}
+      {view === 'gantt' && (() => {
+        // Calculate timeline bounds
+        const allDates = filtered.flatMap(p => {
+          const dates: number[] = [];
+          if (p.dateDebut) dates.push(new Date(p.dateDebut).getTime());
+          if (p.dateFin) dates.push(new Date(p.dateFin).getTime());
+          p.taches.forEach(t => {
+            if (t.dateEcheance) dates.push(new Date(t.dateEcheance).getTime());
+          });
+          return dates;
+        }).filter(d => !isNaN(d));
+
+        const now = Date.now();
+        const minDate = allDates.length > 0 ? Math.min(...allDates, now) : now - 30 * 86400000;
+        const maxDate = allDates.length > 0 ? Math.max(...allDates, now) : now + 90 * 86400000;
+        const pad = Math.max((maxDate - minDate) * 0.05, 7 * 86400000);
+        const start = minDate - pad;
+        const end = maxDate + pad;
+        const totalSpan = end - start;
+        const toPercent = (ts: number) => ((ts - start) / totalSpan) * 100;
+        const nowPercent = toPercent(now);
+
+        // Month labels
+        const months: { label: string; left: number }[] = [];
+        const MOIS_COURTS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+        const cursorDate = new Date(start);
+        cursorDate.setDate(1);
+        cursorDate.setMonth(cursorDate.getMonth() + 1);
+        while (cursorDate.getTime() < end) {
+          months.push({ label: `${MOIS_COURTS[cursorDate.getMonth()]} ${cursorDate.getFullYear()}`, left: toPercent(cursorDate.getTime()) });
+          cursorDate.setMonth(cursorDate.getMonth() + 1);
+        }
+
+        return (
+          <div className="bg-card border border-card-border rounded-2xl overflow-hidden">
+            {/* Timeline header */}
+            <div className="relative h-8 bg-obsidian-800 border-b border-card-border">
+              {months.map((m, i) => (
+                <span key={i} className="absolute top-1.5 text-[10px] text-slate-500 font-medium whitespace-nowrap" style={{ left: `${m.left}%` }}>
+                  {m.label}
+                </span>
+              ))}
+              {/* Today marker */}
+              <div className="absolute top-0 bottom-0 w-px bg-accent-red/60" style={{ left: `${nowPercent}%` }} />
+            </div>
+
+            {/* Project rows */}
+            {filtered.length === 0 && (
+              <div className="py-12 text-center text-slate-500 text-sm">Aucun projet à afficher</div>
+            )}
+            {filtered.map((project) => {
+              const sc = statusConfig[project.statut];
+              const pStart = project.dateDebut ? new Date(project.dateDebut).getTime() : now;
+              const pEnd = project.dateFin ? new Date(project.dateFin).getTime() : pStart + 30 * 86400000;
+              const left = toPercent(pStart);
+              const width = Math.max(toPercent(pEnd) - left, 0.5);
+
+              return (
+                <div key={project.id} className="group">
+                  {/* Project bar */}
+                  <div className="relative h-10 border-b border-card-border/50 hover:bg-obsidian-800/50 transition-colors">
+                    <div className="absolute left-2 top-1.5 text-xs text-white font-medium truncate z-10" style={{ maxWidth: `${Math.max(left - 2, 0)}%` }}>
+                      {project.nom}
+                    </div>
+                    <div
+                      className="absolute top-2 h-6 rounded-md flex items-center overflow-hidden cursor-pointer"
+                      style={{ left: `${left}%`, width: `${width}%`, backgroundColor: statusHex[project.statut] }}
+                      title={`${project.nom} — ${project.statut}`}
+                      onClick={() => setExpandedProject(expandedProject === project.id ? null : project.id)}
+                    >
+                      {/* Progress fill */}
+                      <div
+                        className="absolute inset-y-0 left-0 bg-white/20 rounded-l-md"
+                        style={{ width: `${project.progression}%` }}
+                      />
+                      <span className="relative text-[10px] text-white font-semibold px-2 truncate">
+                        {left > 30 ? '' : project.nom} {project.progression}%
+                      </span>
+                    </div>
+                    {/* Today line */}
+                    <div className="absolute top-0 bottom-0 w-px bg-accent-red/30" style={{ left: `${nowPercent}%` }} />
+                  </div>
+
+                  {/* Task bars (collapsed by default) */}
+                  {expandedProject === project.id && project.taches.map((task) => {
+                    const tEnd = task.dateEcheance ? new Date(task.dateEcheance).getTime() : pEnd;
+                    const tStart = Math.max(pStart, tEnd - 7 * 86400000); // estimate 1 week before deadline
+                    const tLeft = toPercent(tStart);
+                    const tWidth = Math.max(toPercent(tEnd) - tLeft, 0.3);
+                    const isDone = task.statut === 'fait';
+                    return (
+                      <div key={task.id} className="relative h-7 border-b border-card-border/30 bg-obsidian-800/30">
+                        <div className="absolute left-6 top-1 text-[10px] text-slate-400 truncate z-10" style={{ maxWidth: `${Math.max(tLeft - 4, 0)}%` }}>
+                          {task.titre}
+                        </div>
+                        <div
+                          className={clsx('absolute top-1 h-5 rounded', isDone ? 'bg-emerald-500/60' : 'bg-cyan-500/40')}
+                          style={{ left: `${tLeft}%`, width: `${tWidth}%` }}
+                          title={`${task.titre} — ${task.statut}`}
+                        >
+                          <span className="text-[9px] text-white/80 px-1.5 truncate block leading-5">
+                            {tLeft > 30 ? '' : task.titre}
+                          </span>
+                        </div>
+                        <div className="absolute top-0 bottom-0 w-px bg-accent-red/20" style={{ left: `${nowPercent}%` }} />
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* ── Project List ─────────────────────────────────────────────────── */}
       {view === 'list' && (
@@ -1052,7 +1184,7 @@ export const Projects: React.FC = () => {
 
                       {/* Tasks */}
                       <div className="p-5">
-                        <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center justify-between mb-3">
                           <h4 className="font-semibold text-white text-sm">Tâches ({project.taches.length})</h4>
                           <button
                             onClick={() => setAddTaskModal(project.id)}
@@ -1062,8 +1194,34 @@ export const Projects: React.FC = () => {
                             Ajouter
                           </button>
                         </div>
+                        {/* Freelancer filter */}
+                        {(project.freelancerIds?.length ?? 0) > 0 && (
+                          <div className="flex items-center gap-1.5 mb-3 flex-wrap">
+                            <button
+                              onClick={() => setTaskFreelancerFilter('all')}
+                              className={clsx('px-2 py-1 rounded-lg text-[11px] font-semibold border transition-all', taskFreelancerFilter === 'all' ? 'bg-primary-500/20 border-primary-500/40 text-primary-400' : 'border-card-border text-slate-500 hover:text-white')}
+                            >
+                              Tous
+                            </button>
+                            {freelancers.filter(f => project.freelancerIds?.includes(f.id)).map(f => (
+                              <button
+                                key={f.id}
+                                onClick={() => setTaskFreelancerFilter(f.id)}
+                                className={clsx('px-2 py-1 rounded-lg text-[11px] font-semibold border transition-all', taskFreelancerFilter === f.id ? 'bg-primary-500/20 border-primary-500/40 text-primary-400' : 'border-card-border text-slate-500 hover:text-white')}
+                              >
+                                {f.prenom} {f.nom.charAt(0)}.
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         <div className="space-y-2">
-                          {project.taches.map((task) => {
+                          {project.taches.filter(task => {
+                            if (taskFreelancerFilter === 'all') return true;
+                            return (task.assigneAIds || []).includes(taskFreelancerFilter) ||
+                              task.assigneA.toLowerCase().includes(
+                                (() => { const f = freelancers.find(fl => fl.id === taskFreelancerFilter); return f ? `${f.prenom} ${f.nom}`.toLowerCase() : ''; })()
+                              );
+                          }).map((task) => {
                             const ts = taskStatusConfig[task.statut];
                             return (
                               <div key={task.id} className={clsx('flex items-center gap-3 p-3 rounded-xl border transition-all', ts.bg)}>
@@ -1082,7 +1240,16 @@ export const Projects: React.FC = () => {
                                 <div className="flex-1 min-w-0">
                                   <p className={clsx('text-sm font-medium', task.statut === 'fait' ? 'line-through text-slate-500' : 'text-white')}>{task.titre}</p>
                                   <div className="flex items-center gap-2 mt-0.5">
-                                    <span className="text-xs text-slate-500">{task.assigneA}</span>
+                                    {task.assigneA ? (
+                                      <span className="inline-flex items-center gap-1.5 text-xs text-slate-400">
+                                        <span className="w-4 h-4 rounded-full bg-primary-500/20 text-primary-400 text-[9px] font-bold flex items-center justify-center flex-shrink-0">
+                                          {task.assigneA.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                                        </span>
+                                        {task.assigneA}
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs text-slate-600 italic">Non assigné</span>
+                                    )}
                                     {task.dateEcheance && (
                                       <span className="text-xs text-slate-500">· {new Date(task.dateEcheance).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</span>
                                     )}
@@ -1190,26 +1357,54 @@ export const Projects: React.FC = () => {
             <div>
               <label className="block text-xs font-semibold text-slate-400 mb-1.5">Assigné à</label>
               {(() => {
+                const proj = projects.find(p => p.id === addTaskModal);
                 const projectFreelancers = freelancers.filter(f =>
-                  (projects.find(p => p.id === addTaskModal)?.freelancerIds || []).includes(f.id)
+                  (proj?.freelancerIds || []).includes(f.id)
                 );
-                return projectFreelancers.length > 0 ? (
+                const equipeMembers = (proj?.equipe || []).map(name => ({ id: `equipe-${name}`, label: name }));
+                const hasOptions = projectFreelancers.length > 0 || equipeMembers.length > 0;
+                return hasOptions ? (
                   <select
-                    value={newTask.assigneA}
-                    onChange={e => setNewTask(p => ({ ...p, assigneA: e.target.value }))}
+                    value={newTask.assigneAIds[0] || ''}
+                    onChange={e => {
+                      const selectedId = e.target.value;
+                      if (!selectedId) {
+                        setNewTask(p => ({ ...p, assigneA: '', assigneAIds: [] }));
+                        return;
+                      }
+                      const fl = freelancers.find(f => f.id === selectedId);
+                      if (fl) {
+                        setNewTask(p => ({ ...p, assigneA: `${fl.prenom} ${fl.nom}`, assigneAIds: [fl.id] }));
+                      } else {
+                        // Membre équipe agence
+                        const name = equipeMembers.find(m => m.id === selectedId)?.label || selectedId;
+                        setNewTask(p => ({ ...p, assigneA: name, assigneAIds: [] }));
+                      }
+                    }}
                     className={INPUT_CLASS}
                   >
                     <option value="">— Non assigné —</option>
-                    {projectFreelancers.map(f => (
-                      <option key={f.id} value={`${f.prenom} ${f.nom}`}>{f.prenom} {f.nom} ({f.specialite})</option>
-                    ))}
+                    {projectFreelancers.length > 0 && (
+                      <optgroup label="Prestataires du projet">
+                        {projectFreelancers.map(f => (
+                          <option key={f.id} value={f.id}>{f.prenom} {f.nom} — {f.specialite}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {equipeMembers.length > 0 && (
+                      <optgroup label="Équipe agence">
+                        {equipeMembers.map(m => (
+                          <option key={m.id} value={m.id}>{m.label}</option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                 ) : (
                   <input
                     type="text"
                     value={newTask.assigneA}
-                    onChange={e => setNewTask(p => ({ ...p, assigneA: e.target.value }))}
-                    placeholder="Nom du responsable (ajoutez d'abord des prestataires)"
+                    onChange={e => setNewTask(p => ({ ...p, assigneA: e.target.value, assigneAIds: [] }))}
+                    placeholder="Ajoutez d'abord des prestataires au projet"
                     className={INPUT_CLASS}
                   />
                 );
@@ -1377,6 +1572,14 @@ export const Projects: React.FC = () => {
               placeholder="0"
             />
           </div>
+          {/* Tags */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 mb-1.5">Tags</label>
+            <TagPicker
+              selected={editProject.tags}
+              onChange={(tags) => setEditProject(p => ({ ...p, tags }))}
+            />
+          </div>
           <div className="flex gap-3 pt-2">
             <button
               onClick={() => { setIsEditModalOpen(false); setEditProjectId(null); }}
@@ -1512,6 +1715,15 @@ export const Projects: React.FC = () => {
               min="0"
               step="100"
               placeholder="0"
+            />
+          </div>
+
+          {/* Tags */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 mb-1.5">Tags</label>
+            <TagPicker
+              selected={newProject.tags}
+              onChange={(tags) => setNewProject(p => ({ ...p, tags }))}
             />
           </div>
 

@@ -34,13 +34,20 @@ const ROLE_CONFIG: Record<UserRole, { label: string; className: string }> = {
 };
 
 const ACTION_COLORS: Record<string, string> = {
-  login:        'bg-green-500/20 text-green-400',
-  logout:       'bg-slate-500/20 text-slate-400',
-  view_section: 'bg-blue-500/20 text-blue-400',
-  update_task:  'bg-accent-cyan/20 text-accent-cyan',
-  create:       'bg-emerald-500/20 text-emerald-400',
-  delete:       'bg-red-500/20 text-red-400',
-  update:       'bg-amber-500/20 text-amber-400',
+  login:             'bg-green-500/20 text-green-400',
+  logout:            'bg-slate-500/20 text-slate-400',
+  view_section:      'bg-blue-500/20 text-blue-400',
+  update_task:       'bg-accent-cyan/20 text-accent-cyan',
+  create:            'bg-emerald-500/20 text-emerald-400',
+  delete:            'bg-red-500/20 text-red-400',
+  update:            'bg-amber-500/20 text-amber-400',
+  create_client:     'bg-emerald-500/20 text-emerald-400',
+  delete_client:     'bg-red-500/20 text-red-400',
+  create_freelancer: 'bg-emerald-500/20 text-emerald-400',
+  delete_freelancer: 'bg-red-500/20 text-red-400',
+  create_project:    'bg-purple-500/20 text-purple-400',
+  delete_project:    'bg-red-500/20 text-red-400',
+  clear_logs:        'bg-orange-500/20 text-orange-400',
 };
 
 const DEFAULT_FREELANCER_PERMISSIONS: SectionPermission[] = ['projects', 'worktracking'];
@@ -346,6 +353,8 @@ export const Admin: React.FC = () => {
   // Logs filters
   const [logSearch, setLogSearch] = useState('');
   const [logActionFilter, setLogActionFilter] = useState('');
+  const [logDateFrom, setLogDateFrom] = useState('');
+  const [logDateTo, setLogDateTo] = useState('');
   const [logPage, setLogPage] = useState(1);
   const LOG_PAGE_SIZE = 50;
 
@@ -371,9 +380,23 @@ export const Admin: React.FC = () => {
         log.action.toLowerCase().includes(logSearch.toLowerCase()) ||
         (log.details ?? '').toLowerCase().includes(logSearch.toLowerCase());
       const matchAction = !logActionFilter || log.action === logActionFilter;
-      return matchSearch && matchAction;
+      const logDate = log.date.split('T')[0];
+      const matchDateFrom = !logDateFrom || logDate >= logDateFrom;
+      const matchDateTo = !logDateTo || logDate <= logDateTo;
+      return matchSearch && matchAction && matchDateFrom && matchDateTo;
     });
-  }, [auditLogs, logSearch, logActionFilter]);
+  }, [auditLogs, logSearch, logActionFilter, logDateFrom, logDateTo]);
+
+  // Audit stats
+  const auditStats = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const todayLogs = auditLogs.filter(l => l.date.startsWith(today)).length;
+    const actionBreakdown: Record<string, number> = {};
+    auditLogs.forEach(l => { actionBreakdown[l.action] = (actionBreakdown[l.action] || 0) + 1; });
+    const topActions = Object.entries(actionBreakdown).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const uniqueUsers = new Set(auditLogs.map(l => l.userNom)).size;
+    return { total: auditLogs.length, todayLogs, topActions, uniqueUsers };
+  }, [auditLogs]);
 
   const paginatedLogs = filteredLogs.slice(0, logPage * LOG_PAGE_SIZE);
 
@@ -845,6 +868,33 @@ export const Admin: React.FC = () => {
       {/* ── LOGS TAB ───────────────────────────────────────────────────── */}
       {activeTab === 'logs' && (
         <div className="space-y-5">
+          {/* Audit Stats */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-card border border-card-border rounded-xl p-4">
+              <p className="text-xs text-slate-400 mb-1">Total événements</p>
+              <p className="text-2xl font-bold text-white">{auditStats.total}</p>
+            </div>
+            <div className="bg-card border border-card-border rounded-xl p-4">
+              <p className="text-xs text-slate-400 mb-1">Aujourd'hui</p>
+              <p className="text-2xl font-bold text-primary-400">{auditStats.todayLogs}</p>
+            </div>
+            <div className="bg-card border border-card-border rounded-xl p-4">
+              <p className="text-xs text-slate-400 mb-1">Utilisateurs uniques</p>
+              <p className="text-2xl font-bold text-cyan-400">{auditStats.uniqueUsers}</p>
+            </div>
+            <div className="bg-card border border-card-border rounded-xl p-4">
+              <p className="text-xs text-slate-400 mb-1">Top actions</p>
+              <div className="space-y-1 mt-1">
+                {auditStats.topActions.slice(0, 3).map(([action, count]) => (
+                  <div key={action} className="flex items-center justify-between text-xs">
+                    <span className={clsx('px-1.5 py-0.5 rounded text-[10px] font-medium', ACTION_COLORS[action] ?? 'bg-slate-500/20 text-slate-400')}>{action}</span>
+                    <span className="text-white font-semibold">{count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-3">
             <div className="relative flex-1 min-w-[200px]">
@@ -864,12 +914,26 @@ export const Admin: React.FC = () => {
               <option value="">Toutes les actions</option>
               {uniqueActions.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
+            <input
+              type="date"
+              value={logDateFrom}
+              onChange={e => setLogDateFrom(e.target.value)}
+              className="bg-card border border-card-border rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-primary-500/60"
+              title="Date début"
+            />
+            <input
+              type="date"
+              value={logDateTo}
+              onChange={e => setLogDateTo(e.target.value)}
+              className="bg-card border border-card-border rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-primary-500/60"
+              title="Date fin"
+            />
             <button
               onClick={() => setClearLogsConfirm(true)}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-red-500/30 text-red-400 hover:bg-red-500/10 text-sm font-medium transition-all"
             >
               <RefreshCw className="w-4 h-4" />
-              Effacer les logs
+              Effacer
             </button>
           </div>
 

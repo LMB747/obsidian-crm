@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import { CRMStore, Client, Freelancer, Project, Invoice, SnoozeSubscription, Activity, Task, AgencySettings, TimerSession, UserAccount, AuditLog, TaskNote, ProjectActivity, Notification, Workspace, Invitation, Objective, ProjectSubCategory } from '../types';
+import { CRMStore, Client, Freelancer, Project, Invoice, SnoozeSubscription, Activity, Task, AgencySettings, TimerSession, UserAccount, AuditLog, TaskNote, ProjectActivity, Notification, Workspace, Invitation, Objective, ProjectSubCategory, UnifiedTag } from '../types';
 import { toast } from '../components/ui/Toast';
 import { verifyPassword } from '../utils/crypto';
 import {
@@ -59,6 +59,18 @@ export const useStore = create<CRMStore>()(
       currentUser: null,
       setupComplete: false,
 
+      // ─── Tags unifiés ─────────────────────────────────────────────────────
+      unifiedTags: [
+        { id: 'tag-vip',        name: 'VIP',         color: '#f59e0b' },
+        { id: 'tag-urgent',     name: 'Urgent',      color: '#ef4444' },
+        { id: 'tag-design',     name: 'Design',      color: '#ec4899' },
+        { id: 'tag-dev',        name: 'Développement', color: '#3b82f6' },
+        { id: 'tag-marketing',  name: 'Marketing',   color: '#10b981' },
+        { id: 'tag-seo',        name: 'SEO',         color: '#8b5cf6' },
+        { id: 'tag-social',     name: 'Social Media', color: '#06b6d4' },
+        { id: 'tag-video',      name: 'Vidéo',       color: '#f97316' },
+      ] as UnifiedTag[],
+
       // ─── Settings ──────────────────────────────────────────────────────────
       settings: defaultSettings,
 
@@ -86,6 +98,8 @@ export const useStore = create<CRMStore>()(
           entityNom: newClient.nom,
         });
         toast.success('Client ajouté', `${newClient.nom} — ${newClient.entreprise}`);
+        const cu = get().currentUser;
+        get().addAuditLog({ userId: cu?.id || 'system', userNom: cu ? `${cu.prenom} ${cu.nom}` : 'Système', action: 'create_client', section: 'clients', details: `${newClient.nom} — ${newClient.entreprise}`, date: new Date().toISOString() });
       },
 
       updateClient: (id, updates) => {
@@ -97,8 +111,11 @@ export const useStore = create<CRMStore>()(
       },
 
       deleteClient: (id) => {
+        const client = get().clients.find(c => c.id === id);
         set((state) => ({ clients: state.clients.filter((c) => c.id !== id) }));
         toast.warning('Client supprimé');
+        const cu = get().currentUser;
+        get().addAuditLog({ userId: cu?.id || 'system', userNom: cu ? `${cu.prenom} ${cu.nom}` : 'Système', action: 'delete_client', section: 'clients', details: client?.nom || id, date: new Date().toISOString() });
       },
 
       // ─── Freelancer Actions ────────────────────────────────────────────────────
@@ -118,6 +135,8 @@ export const useStore = create<CRMStore>()(
           entityNom: `${newFreelancer.prenom} ${newFreelancer.nom}`,
         });
         toast.success('Prestataire ajouté', `${newFreelancer.prenom} ${newFreelancer.nom} — ${newFreelancer.entreprise}`);
+        const cu = get().currentUser;
+        get().addAuditLog({ userId: cu?.id || 'system', userNom: cu ? `${cu.prenom} ${cu.nom}` : 'Système', action: 'create_freelancer', section: 'freelancers', details: `${newFreelancer.prenom} ${newFreelancer.nom}`, date: new Date().toISOString() });
       },
 
       updateFreelancer: (id, updates) => {
@@ -127,8 +146,11 @@ export const useStore = create<CRMStore>()(
       },
 
       deleteFreelancer: (id) => {
+        const fl = get().freelancers.find(f => f.id === id);
         set((state) => ({ freelancers: state.freelancers.filter((f) => f.id !== id) }));
         toast.warning('Prestataire supprimé');
+        const cu = get().currentUser;
+        get().addAuditLog({ userId: cu?.id || 'system', userNom: cu ? `${cu.prenom} ${cu.nom}` : 'Système', action: 'delete_freelancer', section: 'freelancers', details: fl ? `${fl.prenom} ${fl.nom}` : id, date: new Date().toISOString() });
       },
 
       // ─── Project Actions ───────────────────────────────────────────────────
@@ -153,6 +175,8 @@ export const useStore = create<CRMStore>()(
           date: new Date().toISOString(),
         });
         toast.success('Projet créé', newProject.nom);
+        const cu2 = get().currentUser;
+        get().addAuditLog({ userId: cu2?.id || 'system', userNom: cu2 ? `${cu2.prenom} ${cu2.nom}` : 'Système', action: 'create_project', section: 'projects', details: `${newProject.nom} — ${newProject.clientNom}`, date: new Date().toISOString() });
       },
 
       updateProject: (id, updates) => {
@@ -162,8 +186,11 @@ export const useStore = create<CRMStore>()(
       },
 
       deleteProject: (id) => {
+        const proj = get().projects.find(p => p.id === id);
         set((state) => ({ projects: state.projects.filter((p) => p.id !== id) }));
         toast.warning('Projet supprimé');
+        const cu3 = get().currentUser;
+        get().addAuditLog({ userId: cu3?.id || 'system', userNom: cu3 ? `${cu3.prenom} ${cu3.nom}` : 'Système', action: 'delete_project', section: 'projects', details: proj?.nom || id, date: new Date().toISOString() });
       },
 
       addTask: (projectId, taskData) => {
@@ -192,6 +219,7 @@ export const useStore = create<CRMStore>()(
             type: 'info',
             lu: false,
             date: new Date().toISOString(),
+            section: 'projects',
           });
         }
       },
@@ -230,6 +258,7 @@ export const useStore = create<CRMStore>()(
               type: updates.statut === 'fait' ? 'success' : 'info',
               lu: false,
               date: new Date().toISOString(),
+              section: 'projects',
             });
           }
 
@@ -265,6 +294,7 @@ export const useStore = create<CRMStore>()(
               type: 'success',
               lu: false,
               date: new Date().toISOString(),
+              section: 'projects',
             });
           }
         }
@@ -478,6 +508,23 @@ export const useStore = create<CRMStore>()(
         }));
       },
 
+      // ─── Tag Actions ────────────────────────────────────────────────────────
+      addUnifiedTag: (tagData) => {
+        const tag: UnifiedTag = { ...tagData, id: uuidv4() };
+        set((state) => ({ unifiedTags: [...state.unifiedTags, tag] }));
+        return tag;
+      },
+
+      updateUnifiedTag: (id, updates) => {
+        set((state) => ({
+          unifiedTags: state.unifiedTags.map((t) => (t.id === id ? { ...t, ...updates } : t)),
+        }));
+      },
+
+      deleteUnifiedTag: (id) => {
+        set((state) => ({ unifiedTags: state.unifiedTags.filter((t) => t.id !== id) }));
+      },
+
       // ─── Settings Actions ──────────────────────────────────────────────────
       updateSettings: (updates) => {
         set((state) => ({ settings: { ...state.settings, ...updates } }));
@@ -613,6 +660,7 @@ export const useStore = create<CRMStore>()(
             type: 'info',
             lu: false,
             date: new Date().toISOString(),
+            section: 'projects',
           });
         }
 
@@ -681,6 +729,7 @@ export const useStore = create<CRMStore>()(
             type: 'info',
             lu: false,
             date: new Date().toISOString(),
+            section: 'projects',
           });
         }
       },
@@ -741,6 +790,7 @@ export const useStore = create<CRMStore>()(
         timerSessions: state.timerSessions,
         workspaces: state.workspaces,
         invitations: state.invitations,
+        unifiedTags: state.unifiedTags,
         settings: state.settings,
         users: state.users,
         auditLogs: state.auditLogs,

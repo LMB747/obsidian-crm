@@ -6,16 +6,17 @@ import {
   Calendar, CheckCircle2, AlertCircle, Loader2, Send,
   Save, BookOpen, ChevronDown, ChevronUp, Copy,
   Zap, GripVertical, Euro, Percent, StickyNote,
-  ArrowUpRight, RotateCcw, Search, X, Briefcase
+  ArrowUpRight, RotateCcw, Search, X, Briefcase, Video
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
+import { useDocumentStore, type SavedDocument, type DocStatus } from '../store/useDocumentStore';
 import { injectFacture, injectDevis, injectContrat } from '../lib/documentInjector';
 import { EmailModal } from '../components/EmailModal/EmailModal';
 import clsx from 'clsx';
 import { v4 as uuidv4 } from 'uuid';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type DocType = 'facture' | 'devis' | 'contrat';
+type DocType = 'facture' | 'devis' | 'contrat' | 'contrat_influenceur';
 
 interface ServiceItem {
   id: string;
@@ -48,6 +49,16 @@ interface FormState {
   acompteDejaVerse: boolean;
   dateAcompte: string;
   notes: string;
+  // Influencer contract fields
+  influPlatformes: string;
+  influTypeContenu: string;
+  influNbPublications: string;
+  influDatesPublication: string;
+  influDroitsUtilisation: string;
+  influExclusivite: string;
+  influRemuneration: string;
+  influKpis: string;
+  influValidation: string;
 }
 
 const DOC_CONFIG: Record<DocType, {
@@ -70,6 +81,11 @@ const DOC_CONFIG: Record<DocType, {
     bg: 'bg-amber-500/10', border: 'border-amber-500/40',
     template: '/templates/contrat.html', accentClass: 'amber',
   },
+  contrat_influenceur: {
+    label: 'Influenceur', icon: Video, color: 'text-pink-400',
+    bg: 'bg-pink-500/10', border: 'border-pink-500/40',
+    template: '/templates/contrat.html', accentClass: 'pink',
+  },
 };
 
 const TVA_PRESETS = [0, 5.5, 10, 20];
@@ -80,7 +96,7 @@ function newItem(): ServiceItem {
 
 function buildNumero(type: DocType, count: number): string {
   const year = new Date().getFullYear();
-  const prefix = { facture: 'FA', devis: 'DE', contrat: 'CO' }[type];
+  const prefix = { facture: 'FAC', devis: 'DEV', contrat: 'CTR', contrat_influenceur: 'INF' }[type];
   return `${prefix}-${year}-${String(count).padStart(3, '0')}`;
 }
 
@@ -136,9 +152,16 @@ const FieldInput: React.FC<{
 // ─── Main Component ────────────────────────────────────────────────────────────
 export const Documents: React.FC = () => {
   const { clients, freelancers, invoices, addInvoice, settings } = useStore();
+  const { documents, saveDocument, updateDocument, deleteDocument, duplicateDocument, getNextNumber } = useDocumentStore();
 
   const today    = useMemo(() => new Date().toISOString().split('T')[0], []);
   const in30days = useMemo(() => new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0], []);
+
+  // ── View mode: list or editor ──────────────────────────────────────────────
+  const [view, setView] = useState<'list' | 'editor'>('list');
+  const [editingDocId, setEditingDocId] = useState<string | null>(null);
+  const [listFilter, setListFilter] = useState<DocType | 'all'>('all');
+  const [listStatusFilter, setListStatusFilter] = useState<DocStatus | 'all'>('all');
 
   // ── Core state ──────────────────────────────────────────────────────────────
   const [docType, setDocType]             = useState<DocType>('facture');
@@ -170,12 +193,10 @@ export const Documents: React.FC = () => {
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // ── Auto-number ──────────────────────────────────────────────────────────────
+  // ── Auto-number (from document store counters) ──────────────────────────────
   const nextNumber = useMemo(() => {
-    const year = new Date().getFullYear();
-    const count = invoices.filter(i => i.numero.includes(String(year))).length + 1;
-    return buildNumero(docType, count);
-  }, [docType, invoices]);
+    return getNextNumber(docType);
+  }, [docType, getNextNumber]);
 
   // ── Form state ───────────────────────────────────────────────────────────────
   const [form, setForm] = useState<FormState>({
@@ -188,6 +209,8 @@ export const Documents: React.FC = () => {
     clientRepresentant: '', projetNom: '', projetObjet: '',
     dateDebut: today, dateFin: in30days,
     tvaPercent: 20, acomptePercent: 0, acompteDejaVerse: false, dateAcompte: '', notes: '',
+    influPlatformes: '', influTypeContenu: '', influNbPublications: '', influDatesPublication: '',
+    influDroitsUtilisation: '', influExclusivite: '', influRemuneration: '', influKpis: '', influValidation: '',
   });
 
   const [items, setItems] = useState<ServiceItem[]>([newItem()]);
@@ -421,10 +444,12 @@ export const Documents: React.FC = () => {
               min-height: unset !important;
               max-height: none !important;
               overflow: visible !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
             }
             * { max-height: none !important; }
             .page-break, [class*="page-break"], .break-after, .pagebreak { display: none !important; }
-            @page { margin: 1cm; }
+            @page { margin: 10mm; }
           }
         `;
         iframeDoc.head.appendChild(style);
@@ -475,7 +500,7 @@ export const Documents: React.FC = () => {
     const year = new Date().getFullYear();
     const count = useStore.getState().invoices.length + 1;
     addInvoice({
-      numero:       `FA-${year}-${String(count).padStart(3, '0')}-AC`,
+      numero:       `FAC-${year}-${String(count).padStart(3, '0')}-AC`,
       clientId:     selectedClientId || '',
       clientNom:    form.clientEntreprise || form.clientNom,
       statut:       'brouillon',
@@ -513,7 +538,7 @@ export const Documents: React.FC = () => {
       ? `Solde restant (${100 - form.acomptePercent}% du TTC). Acompte de ${totals.acompte.toLocaleString('fr-FR')} € déjà perçu${dateVersement}.`
       : `Solde restant à payer (${100 - form.acomptePercent}%) — acompte de ${totals.acompte.toLocaleString('fr-FR')} € prévu.`;
     addInvoice({
-      numero:       `FA-${year}-${String(count).padStart(3, '0')}-SL`,
+      numero:       `FAC-${year}-${String(count).padStart(3, '0')}-SL`,
       clientId:     selectedClientId || '',
       clientNom:    form.clientEntreprise || form.clientNom,
       // Si l'acompte est déjà versé, le solde reste à payer → 'envoyée'
@@ -552,6 +577,8 @@ export const Documents: React.FC = () => {
       clientRepresentant: '', projetNom: '', projetObjet: '',
       dateDebut: today, dateFin: in30days,
       tvaPercent: 20, acomptePercent: 0, acompteDejaVerse: false, dateAcompte: '', notes: '',
+      influPlatformes: '', influTypeContenu: '', influNbPublications: '', influDatesPublication: '',
+      influDroitsUtilisation: '', influExclusivite: '', influRemuneration: '', influKpis: '', influValidation: '',
     });
     setInjected(false);
     setSavedToInvoices(false);
@@ -559,17 +586,76 @@ export const Documents: React.FC = () => {
 
   // ── Convert Devis → Facture ───────────────────────────────────────────────────
   const handleConvertToFacture = () => {
-    const newNumero = form.numero.startsWith('DE-')
-      ? form.numero.replace(/^DE-/, 'FA-')
-      : (() => {
-          const year = new Date().getFullYear();
-          const count = useStore.getState().invoices.length + 1;
-          return `FA-${year}-${String(count).padStart(3, '0')}`;
-        })();
+    const newNumero = form.numero.startsWith('DEV-')
+      ? form.numero.replace(/^DEV-/, 'FAC-')
+      : getNextNumber('facture');
     setDocType('facture');
     setForm(f => ({ ...f, numero: newNumero }));
     setConvertBanner(true);
     setTimeout(() => setConvertBanner(false), 3000);
+  };
+
+  // ── Save document to store ──────────────────────────────────────────────────
+  const handleSaveDocument = () => {
+    if (editingDocId) {
+      updateDocument(editingDocId, {
+        type: docType,
+        numero: form.numero,
+        clientNom: form.clientEntreprise || form.clientNom,
+        clientId: selectedClientId,
+        formData: { ...form },
+        serviceItems: items.map(i => ({ ...i })),
+        freelancerIds: selectedFreelancerIds.length > 0 ? selectedFreelancerIds : (selectedFreelancerId ? [selectedFreelancerId] : []),
+      });
+    } else {
+      const id = saveDocument({
+        type: docType,
+        numero: form.numero,
+        status: 'brouillon',
+        clientId: selectedClientId,
+        clientNom: form.clientEntreprise || form.clientNom,
+        formData: { ...form },
+        serviceItems: items.map(i => ({ ...i })),
+        freelancerIds: selectedFreelancerIds.length > 0 ? selectedFreelancerIds : (selectedFreelancerId ? [selectedFreelancerId] : []),
+      });
+      setEditingDocId(id);
+    }
+    setSavedToInvoices(true);
+    setTimeout(() => setSavedToInvoices(false), 2000);
+  };
+
+  // ── Load saved document into editor ─────────────────────────────────────────
+  const handleLoadDocument = (doc: SavedDocument) => {
+    setDocType(doc.type);
+    setForm({
+      ...doc.formData,
+      influPlatformes: doc.formData.influPlatformes ?? '',
+      influTypeContenu: doc.formData.influTypeContenu ?? '',
+      influNbPublications: doc.formData.influNbPublications ?? '',
+      influDatesPublication: doc.formData.influDatesPublication ?? '',
+      influDroitsUtilisation: doc.formData.influDroitsUtilisation ?? '',
+      influExclusivite: doc.formData.influExclusivite ?? '',
+      influRemuneration: doc.formData.influRemuneration ?? '',
+      influKpis: doc.formData.influKpis ?? '',
+      influValidation: doc.formData.influValidation ?? '',
+    });
+    setItems(doc.serviceItems.length > 0 ? doc.serviceItems : [newItem()]);
+    setSelectedClientId(doc.clientId);
+    setSelectedFreelancerIds(doc.freelancerIds);
+    setSelectedFreelancerId(doc.freelancerIds[0] || '');
+    setEditingDocId(doc.id);
+    setInjected(false);
+    setIframeLoaded(false);
+    setView('editor');
+  };
+
+  // ── New document (from list) ────────────────────────────────────────────────
+  const handleNewDocument = (type: DocType) => {
+    handleReset();
+    setDocType(type);
+    setForm(f => ({ ...f, numero: getNextNumber(type) }));
+    setEditingDocId(null);
+    setView('editor');
   };
 
   // ── Filtered clients for search ──────────────────────────────────────────────
@@ -586,16 +672,208 @@ export const Documents: React.FC = () => {
   const cfg = DOC_CONFIG[docType];
   const DocIcon = cfg.icon;
 
+  // ─── Filtered documents for list ─────────────────────────────────────────
+  const filteredDocs = useMemo(() => {
+    let docs = [...documents];
+    if (listFilter !== 'all') docs = docs.filter(d => d.type === listFilter);
+    if (listStatusFilter !== 'all') docs = docs.filter(d => d.status === listStatusFilter);
+    return docs.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  }, [documents, listFilter, listStatusFilter]);
+
+  const statusColors: Record<DocStatus, string> = {
+    brouillon: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
+    'envoyé': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+    'signé': 'bg-green-500/20 text-green-400 border-green-500/30',
+    'refusé': 'bg-red-500/20 text-red-400 border-red-500/30',
+  };
+
   // ─── Render ────────────────────────────────────────────────────────────────
+
+  // ══ LIST VIEW ══════════════════════════════════════════════════════════════
+  if (view === 'list') {
+    return (
+      <div className="p-6 space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary-500/10 border border-primary-500/20 flex items-center justify-center">
+                <BookOpen className="w-5 h-5 text-primary-400" />
+              </div>
+              Documents
+            </h1>
+            <p className="text-slate-400 text-sm mt-1">{documents.length} document{documents.length > 1 ? 's' : ''} sauvegardé{documents.length > 1 ? 's' : ''}</p>
+          </div>
+          <div className="flex gap-2">
+            {(Object.entries(DOC_CONFIG) as [DocType, typeof DOC_CONFIG.facture][]).map(([type, c]) => {
+              const Icon = c.icon;
+              return (
+                <button
+                  key={type}
+                  onClick={() => handleNewDocument(type)}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all ${c.bg} ${c.border} border ${c.color} hover:opacity-80`}
+                >
+                  <Icon className="w-4 h-4" />
+                  {type === 'facture' ? 'Nouvelle' : 'Nouveau'} {c.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="flex gap-2">
+          {(['all', 'facture', 'devis', 'contrat'] as const).map((f) => (
+            <button
+              key={f}
+              onClick={() => setListFilter(f)}
+              className={clsx(
+                'px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border',
+                listFilter === f
+                  ? 'bg-primary-500/20 border-primary-500/40 text-primary-400'
+                  : 'bg-card border-card-border text-slate-400 hover:text-white'
+              )}
+            >
+              {f === 'all' ? 'Tous' : f === 'devis' ? 'Devis' : DOC_CONFIG[f].label + 's'}
+            </button>
+          ))}
+          <div className="w-px bg-card-border mx-1" />
+          {(['all', 'brouillon', 'envoyé', 'signé', 'refusé'] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => setListStatusFilter(s)}
+              className={clsx(
+                'px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border',
+                listStatusFilter === s
+                  ? 'bg-primary-500/20 border-primary-500/40 text-primary-400'
+                  : 'bg-card border-card-border text-slate-400 hover:text-white'
+              )}
+            >
+              {s === 'all' ? 'Tous statuts' : s.charAt(0).toUpperCase() + s.slice(1)}
+            </button>
+          ))}
+        </div>
+
+        {/* Documents table */}
+        {filteredDocs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-primary-500/10 flex items-center justify-center mb-4">
+              <FileText className="w-8 h-8 text-primary-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-white mb-1">Aucun document</h3>
+            <p className="text-slate-400 text-sm mb-4">Créez votre premier document pour commencer</p>
+            <button
+              onClick={() => handleNewDocument('devis')}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-500 text-white font-semibold text-sm transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              Nouveau Devis
+            </button>
+          </div>
+        ) : (
+          <div className="bg-card border border-card-border rounded-2xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-card-border bg-obsidian-900/40">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Numéro</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Client</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Statut</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Date</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredDocs.map((doc) => {
+                  const c = DOC_CONFIG[doc.type];
+                  const Icon = c.icon;
+                  return (
+                    <tr
+                      key={doc.id}
+                      className="border-b border-card-border/50 hover:bg-obsidian-700/30 transition-colors cursor-pointer"
+                      onClick={() => handleLoadDocument(doc)}
+                    >
+                      <td className="px-4 py-3">
+                        <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-semibold ${c.bg} ${c.color}`}>
+                          <Icon className="w-3.5 h-3.5" />
+                          {c.label}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-white font-mono text-xs">{doc.numero}</td>
+                      <td className="px-4 py-3 text-slate-300">{doc.clientNom || '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold border ${statusColors[doc.status]}`}>
+                          {doc.status.charAt(0).toUpperCase() + doc.status.slice(1)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-400 text-xs">
+                        {new Date(doc.updatedAt).toLocaleDateString('fr-FR')}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => handleLoadDocument(doc)}
+                            className="p-1.5 rounded-lg hover:bg-primary-500/20 text-slate-400 hover:text-primary-400 transition-colors"
+                            title="Modifier"
+                          >
+                            <FilePlus2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => duplicateDocument(doc.id)}
+                            className="p-1.5 rounded-lg hover:bg-cyan-500/20 text-slate-400 hover:text-cyan-400 transition-colors"
+                            title="Dupliquer"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => deleteDocument(doc.id)}
+                            className="p-1.5 rounded-lg hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition-colors"
+                            title="Supprimer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ══ EDITOR VIEW ════════════════════════════════════════════════════════════
   return (
     <div className="flex h-full overflow-hidden" style={{ height: 'calc(100vh - 72px)' }}>
 
       {/* ══ LEFT PANEL ══════════════════════════════════════════════════════ */}
       <div className="w-[400px] flex-shrink-0 flex flex-col bg-obsidian-800 border-r border-card-border overflow-hidden">
 
+        {/* ── Back to list + Save ──────────────────────────────────────── */}
+        <div className="flex items-center gap-2 p-2 border-b border-card-border bg-obsidian-900/80 flex-shrink-0">
+          <button
+            onClick={() => setView('list')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-obsidian-700 transition-all"
+          >
+            <X className="w-3.5 h-3.5" />
+            Liste
+          </button>
+          <div className="flex-1" />
+          <button
+            onClick={handleSaveDocument}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary-600 hover:bg-primary-500 text-white transition-all"
+          >
+            <Save className="w-3.5 h-3.5" />
+            {editingDocId ? 'Mettre à jour' : 'Sauvegarder'}
+          </button>
+        </div>
+
         {/* ── Doc type selector ─────────────────────────────────────────── */}
         <div className="p-3 border-b border-card-border bg-obsidian-900/60 flex-shrink-0">
-          <div className="grid grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-4 gap-1.5">
             {(Object.entries(DOC_CONFIG) as [DocType, typeof DOC_CONFIG.facture][]).map(([type, c]) => {
               const Icon = c.icon;
               return (
@@ -639,7 +917,7 @@ export const Documents: React.FC = () => {
                 {docType === 'devis' && (
                   <FieldInput label="Validité jusqu'au" type="date" value={form.validite} onChange={setF('validite')} />
                 )}
-                {docType === 'contrat' && (
+                {(docType === 'contrat' || docType === 'contrat_influenceur') && (
                   <>
                     <FieldInput label="Date début" type="date" value={form.dateDebut} onChange={setF('dateDebut')} />
                     <FieldInput label="Date fin" type="date" value={form.dateFin} onChange={setF('dateFin')} />
@@ -648,7 +926,7 @@ export const Documents: React.FC = () => {
                   </>
                 )}
               </div>
-              {docType === 'contrat' && (
+              {(docType === 'contrat' || docType === 'contrat_influenceur') && (
                 <div className="space-y-2 pt-1">
                   <FieldInput label="Nom du projet" value={form.projetNom} onChange={setF('projetNom')} placeholder="Ex: Refonte site web" />
                   <div>
@@ -658,6 +936,35 @@ export const Documents: React.FC = () => {
                       onChange={e => setF('projetObjet')(e.target.value)}
                       rows={2}
                       placeholder="Description courte de la mission..."
+                      className="w-full bg-obsidian-700 border border-card-border text-white text-xs rounded-lg px-2.5 py-2 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-primary-500/60 focus:border-primary-500/60 transition-all resize-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Influencer-specific fields */}
+              {docType === 'contrat_influenceur' && (
+                <div className="space-y-2 pt-2 border-t border-pink-500/20">
+                  <p className="text-[11px] font-bold text-pink-400 uppercase tracking-wide flex items-center gap-1.5">
+                    <Video className="w-3.5 h-3.5" /> Détails Influenceur
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <FieldInput label="Plateforme(s)" value={form.influPlatformes} onChange={setF('influPlatformes')} placeholder="Instagram, TikTok, YouTube" className="col-span-2" />
+                    <FieldInput label="Type de contenu" value={form.influTypeContenu} onChange={setF('influTypeContenu')} placeholder="Post, Story, Reel, Vidéo, Live" />
+                    <FieldInput label="Nombre de publications" value={form.influNbPublications} onChange={setF('influNbPublications')} placeholder="Ex: 3 posts + 5 stories" />
+                    <FieldInput label="Dates de publication" value={form.influDatesPublication} onChange={setF('influDatesPublication')} placeholder="Ex: 15/04, 22/04, 30/04" />
+                    <FieldInput label="Rémunération" value={form.influRemuneration} onChange={setF('influRemuneration')} placeholder="Fixe, variable, produits..." />
+                    <FieldInput label="Droits d'utilisation" value={form.influDroitsUtilisation} onChange={setF('influDroitsUtilisation')} placeholder="Durée, territoires" className="col-span-2" />
+                    <FieldInput label="Exclusivité" value={form.influExclusivite} onChange={setF('influExclusivite')} placeholder="Oui/Non, durée" />
+                    <FieldInput label="KPIs attendus" value={form.influKpis} onChange={setF('influKpis')} placeholder="Vues, engagement, clics" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-400 mb-1 uppercase tracking-wide">Clauses de validation</label>
+                    <textarea
+                      value={form.influValidation}
+                      onChange={e => setF('influValidation')(e.target.value)}
+                      rows={2}
+                      placeholder="Validation pré-publication, modération..."
                       className="w-full bg-obsidian-700 border border-card-border text-white text-xs rounded-lg px-2.5 py-2 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-primary-500/60 focus:border-primary-500/60 transition-all resize-none"
                     />
                   </div>
@@ -753,7 +1060,7 @@ export const Documents: React.FC = () => {
                     placeholder="000 000 000 00000"
                   />
                 )}
-                {docType === 'contrat' && (
+                {(docType === 'contrat' || docType === 'contrat_influenceur') && (
                   <FieldInput
                     label="Représentant"
                     icon={User}
@@ -777,17 +1084,17 @@ export const Documents: React.FC = () => {
           {/* ── Section: Prestataire ─────────────────────────────────────── */}
           <SectionHeader
             icon={Briefcase}
-            title={docType === 'contrat' ? 'Prestataire(s)' : 'Prestataire'}
+            title={(docType === 'contrat' || docType === 'contrat_influenceur') ? 'Prestataire(s)' : 'Prestataire'}
             open={secPrestataire}
             onToggle={() => setSecPrestataire(p => !p)}
-            count={docType === 'contrat' ? selectedContractFreelancers.length : undefined}
+            count={(docType === 'contrat' || docType === 'contrat_influenceur') ? selectedContractFreelancers.length : undefined}
           />
           {secPrestataire && (
             <div className="p-4 space-y-2.5 border-b border-card-border/50">
               {/* Freelancer search */}
               <div className="relative">
                 <label className="block text-[11px] font-semibold text-slate-400 mb-1 uppercase tracking-wide">
-                  {docType === 'contrat' ? 'Ajouter un prestataire au contrat' : 'Sélectionner un prestataire'}
+                  {(docType === 'contrat' || docType === 'contrat_influenceur') ? 'Ajouter un prestataire au contrat' : 'Sélectionner un prestataire'}
                 </label>
                 <div className="relative">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
@@ -814,7 +1121,7 @@ export const Documents: React.FC = () => {
                       <button
                         key={f.id}
                         onClick={() => {
-                          if (docType === 'contrat') {
+                          if (docType === 'contrat' || docType === 'contrat_influenceur') {
                             addContractFreelancer(f.id);
                           } else {
                             setSelectedFreelancerId(f.id);
@@ -840,7 +1147,7 @@ export const Documents: React.FC = () => {
               </div>
 
               {/* Selected freelancer preview cards */}
-              {docType === 'contrat' ? (
+              {(docType === 'contrat' || docType === 'contrat_influenceur') ? (
                 // Multi-freelancer mode for contracts
                 selectedContractFreelancers.length > 0 ? (
                   <div className="space-y-2">
@@ -912,7 +1219,7 @@ export const Documents: React.FC = () => {
           {/* ── Section: Prestations / Clauses ───────────────────────────── */}
               <SectionHeader
                 icon={ArrowUpRight}
-                title={docType === 'contrat' ? 'Prestations / Clauses' : 'Prestations'}
+                title={(docType === 'contrat' || docType === 'contrat_influenceur') ? 'Prestations / Clauses' : 'Prestations'}
                 open={secPrestations}
                 onToggle={() => setSecPrestations(p => !p)}
                 count={items.length}

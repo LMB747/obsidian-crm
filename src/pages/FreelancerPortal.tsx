@@ -3,7 +3,7 @@ import {
   Target, CheckCircle2, Clock, PlayCircle,
   AlertCircle, Calendar, TrendingUp, Briefcase,
   ChevronRight, ListTodo, MessageSquare, Send, ChevronDown, ChevronUp, X,
-  Crosshair
+  Crosshair, FileText, Euro, Timer
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useStore } from '../store/useStore';
@@ -223,7 +223,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, project, onStatusChange, onAd
 
 // ─── FreelancerPortal ─────────────────────────────────────────────────────────
 export const FreelancerPortal: React.FC = () => {
-  const { currentUser, projects, updateTask, addTaskNote, setActiveSection, timerSessions, updateObjective } = useStore();
+  const { currentUser, projects, updateTask, addTaskNote, setActiveSection, timerSessions, updateObjective, freelancers } = useStore();
 
   if (!currentUser) return null;
 
@@ -259,6 +259,33 @@ export const FreelancerPortal: React.FC = () => {
       .reduce((sum, s) => sum + Math.round((s.dureeMinutes / 60) * 10) / 10, 0);
     return { total, inProgress, done, heures: Math.round(heures * 10) / 10 };
   }, [assignedTasks, timerSessions]);
+
+  // Upcoming deadlines (next 14 days)
+  const upcomingDeadlines = useMemo(() => {
+    const now = new Date();
+    const in14d = new Date();
+    in14d.setDate(in14d.getDate() + 14);
+    return assignedTasks
+      .filter(({ task }) => task.statut !== 'fait' && task.dateEcheance)
+      .filter(({ task }) => {
+        const d = new Date(task.dateEcheance);
+        return d >= now && d <= in14d;
+      })
+      .sort((a, b) => new Date(a.task.dateEcheance).getTime() - new Date(b.task.dateEcheance).getTime())
+      .slice(0, 5);
+  }, [assignedTasks]);
+
+  // Earnings estimate
+  const freelancerProfile = useMemo(() => {
+    if (!currentUser?.freelancerId) return null;
+    return freelancers.find(f => f.id === currentUser.freelancerId) || null;
+  }, [currentUser, freelancers]);
+
+  const earnings = useMemo(() => {
+    if (!freelancerProfile) return 0;
+    const totalHours = stats.heures;
+    return Math.round((totalHours / 8) * freelancerProfile.tjm);
+  }, [stats.heures, freelancerProfile]);
 
   // Group tasks by project
   const tasksByProject = useMemo(() => {
@@ -360,6 +387,86 @@ export const FreelancerPortal: React.FC = () => {
             </div>
           );
         })}
+      </div>
+
+      {/* ── Quick Actions + Upcoming Deadlines ──────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Quick Actions */}
+        <div className="bg-card border border-card-border rounded-xl p-5 space-y-3">
+          <h3 className="text-sm font-bold text-white">Actions rapides</h3>
+          <div className="space-y-2">
+            {currentUser.permissions.includes('worktracking') && (
+              <button
+                onClick={() => setActiveSection('worktracking')}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg bg-obsidian-700 border border-card-border hover:border-primary-500/30 text-sm text-slate-300 hover:text-white transition-all"
+              >
+                <Timer className="w-4 h-4 text-primary-400" />
+                Démarrer le chronomètre
+                <ChevronRight className="w-3.5 h-3.5 ml-auto text-slate-600" />
+              </button>
+            )}
+            {currentUser.permissions.includes('documents') && (
+              <button
+                onClick={() => setActiveSection('documents')}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg bg-obsidian-700 border border-card-border hover:border-primary-500/30 text-sm text-slate-300 hover:text-white transition-all"
+              >
+                <FileText className="w-4 h-4 text-cyan-400" />
+                Mes documents
+                <ChevronRight className="w-3.5 h-3.5 ml-auto text-slate-600" />
+              </button>
+            )}
+            {freelancerProfile && (
+              <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                <Euro className="w-4 h-4 text-emerald-400" />
+                <div>
+                  <p className="text-xs text-slate-400">Revenus estimés</p>
+                  <p className="text-sm font-bold text-emerald-400">{earnings.toLocaleString('fr-FR')} €</p>
+                </div>
+                <span className="ml-auto text-[10px] text-slate-500">{freelancerProfile.tjm} €/j</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Upcoming Deadlines */}
+        <div className="lg:col-span-2 bg-card border border-card-border rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <AlertCircle className="w-4 h-4 text-amber-400" />
+            <h3 className="text-sm font-bold text-white">Prochaines échéances</h3>
+            <span className="text-slate-500 text-xs ml-auto">{upcomingDeadlines.length} à venir</span>
+          </div>
+          {upcomingDeadlines.length === 0 ? (
+            <p className="text-slate-500 text-sm text-center py-4">Aucune échéance dans les 14 prochains jours</p>
+          ) : (
+            <div className="space-y-2">
+              {upcomingDeadlines.map(({ task, project }) => {
+                const d = new Date(task.dateEcheance);
+                const daysLeft = Math.ceil((d.getTime() - Date.now()) / 86400000);
+                return (
+                  <div key={task.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-obsidian-700/50 border border-card-border/50">
+                    <div className={clsx(
+                      'w-10 h-10 rounded-lg flex flex-col items-center justify-center flex-shrink-0 text-xs font-bold',
+                      daysLeft <= 2 ? 'bg-red-500/20 text-red-400' : daysLeft <= 5 ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-500/20 text-slate-300'
+                    )}>
+                      <span className="text-[10px] font-normal">{d.toLocaleDateString('fr-FR', { month: 'short' })}</span>
+                      <span>{d.getDate()}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-sm font-medium truncate">{task.titre}</p>
+                      <p className="text-slate-500 text-xs">{project.nom}</p>
+                    </div>
+                    <span className={clsx(
+                      'text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0',
+                      daysLeft <= 2 ? 'bg-red-500/20 text-red-400' : daysLeft <= 5 ? 'bg-amber-500/20 text-amber-400' : 'text-slate-400'
+                    )}>
+                      {daysLeft === 0 ? "Aujourd'hui" : daysLeft === 1 ? 'Demain' : `J-${daysLeft}`}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Missions section */}
