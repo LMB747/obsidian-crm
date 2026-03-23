@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import { CRMStore, Client, Freelancer, Project, Invoice, SnoozeSubscription, Activity, Task, AgencySettings, TimerSession, UserAccount, AuditLog, TaskNote, ProjectActivity, Notification } from '../types';
+import { CRMStore, Client, Freelancer, Project, Invoice, SnoozeSubscription, Activity, Task, AgencySettings, TimerSession, UserAccount, AuditLog, TaskNote, ProjectActivity, Notification, Workspace, Invitation, Objective, ProjectSubCategory } from '../types';
 import { toast } from '../components/ui/Toast';
 import { verifyPassword } from '../utils/crypto';
 import {
@@ -52,6 +52,8 @@ export const useStore = create<CRMStore>()(
       snoozeSubscriptions: mockSnoozeSubscriptions,
       activities: mockActivities,
       timerSessions: [],
+      workspaces: [],
+      invitations: [],
       users: [adminAccount],
       auditLogs: [],
       currentUser: null,
@@ -352,6 +354,130 @@ export const useStore = create<CRMStore>()(
         toast.warning('Tous les abonnements supprimés');
       },
 
+      // ─── Workspace Actions ──────────────────────────────────────────────────
+      addWorkspace: (wsData) => {
+        const ws: Workspace = { ...wsData, id: uuidv4(), dateCreation: new Date().toISOString().split('T')[0] };
+        set((state) => ({ workspaces: [...state.workspaces, ws] }));
+        toast.success('Espace créé', ws.nom);
+      },
+
+      updateWorkspace: (id, updates) => {
+        set((state) => ({
+          workspaces: state.workspaces.map((w) => (w.id === id ? { ...w, ...updates } : w)),
+        }));
+      },
+
+      deleteWorkspace: (id) => {
+        set((state) => ({ workspaces: state.workspaces.filter((w) => w.id !== id) }));
+        toast.warning('Espace supprimé');
+      },
+
+      // ─── Invitation Actions ────────────────────────────────────────────────
+      createInvitation: (invData) => {
+        const token = uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '').slice(0, 16);
+        const inv: Invitation = {
+          ...invData,
+          id: uuidv4(),
+          token,
+          status: 'pending',
+          dateCreation: new Date().toISOString(),
+        };
+        set((state) => ({ invitations: [...state.invitations, inv] }));
+        toast.success('Invitation créée', `Lien envoyé à ${inv.email}`);
+        return inv;
+      },
+
+      acceptInvitation: (token) => {
+        const inv = get().invitations.find(i => i.token === token && i.status === 'pending');
+        if (!inv) return { success: false, error: 'Invitation invalide ou expirée.' };
+        if (new Date(inv.expiresAt) < new Date()) {
+          set((state) => ({
+            invitations: state.invitations.map(i => i.id === inv.id ? { ...i, status: 'expired' as const } : i),
+          }));
+          return { success: false, error: 'Ce lien d\'invitation a expiré.' };
+        }
+        set((state) => ({
+          invitations: state.invitations.map(i => i.id === inv.id ? { ...i, status: 'accepted' as const } : i),
+        }));
+        return { success: true };
+      },
+
+      deleteInvitation: (id) => {
+        set((state) => ({ invitations: state.invitations.filter((i) => i.id !== id) }));
+      },
+
+      // ─── Objective Actions ──────────────────────────────────────────────────
+      addObjective: (projectId, objData) => {
+        const obj: Objective = { ...objData, id: uuidv4(), dateCreation: new Date().toISOString().split('T')[0], progression: 0 };
+        set((state) => ({
+          projects: state.projects.map((p) =>
+            p.id === projectId ? { ...p, objectives: [...(p.objectives || []), obj] } : p
+          ),
+        }));
+        toast.success('Objectif ajouté', obj.titre);
+      },
+
+      updateObjective: (projectId, objectiveId, updates) => {
+        set((state) => ({
+          projects: state.projects.map((p) => {
+            if (p.id !== projectId) return p;
+            const objectives = (p.objectives || []).map((o) => {
+              if (o.id !== objectiveId) return o;
+              const updated = { ...o, ...updates };
+              // Auto-calc progression from linked tasks
+              if (updated.taskIds.length > 0) {
+                const linkedTasks = p.taches.filter(t => updated.taskIds.includes(t.id));
+                const done = linkedTasks.filter(t => t.statut === 'fait').length;
+                updated.progression = linkedTasks.length > 0 ? Math.round((done / linkedTasks.length) * 100) : 0;
+                updated.statut = updated.progression === 100 ? 'fait' : updated.progression > 0 ? 'en cours' : 'todo';
+              }
+              return updated;
+            });
+            return { ...p, objectives };
+          }),
+        }));
+      },
+
+      deleteObjective: (projectId, objectiveId) => {
+        set((state) => ({
+          projects: state.projects.map((p) =>
+            p.id === projectId
+              ? { ...p, objectives: (p.objectives || []).filter((o) => o.id !== objectiveId) }
+              : p
+          ),
+        }));
+      },
+
+      // ─── SubCategory Actions ────────────────────────────────────────────────
+      addSubCategory: (projectId, subData) => {
+        const sub: ProjectSubCategory = { ...subData, id: uuidv4() };
+        set((state) => ({
+          projects: state.projects.map((p) =>
+            p.id === projectId ? { ...p, subCategories: [...(p.subCategories || []), sub] } : p
+          ),
+        }));
+      },
+
+      updateSubCategory: (projectId, subId, updates) => {
+        set((state) => ({
+          projects: state.projects.map((p) =>
+            p.id === projectId
+              ? { ...p, subCategories: (p.subCategories || []).map(s => s.id === subId ? { ...s, ...updates } : s) }
+              : p
+          ),
+        }));
+      },
+
+      deleteSubCategory: (projectId, subId) => {
+        set((state) => ({
+          projects: state.projects.map((p) =>
+            p.id === projectId
+              ? { ...p, subCategories: (p.subCategories || []).filter(s => s.id !== subId) }
+              : p
+          ),
+        }));
+      },
+
       // ─── Settings Actions ──────────────────────────────────────────────────
       updateSettings: (updates) => {
         set((state) => ({ settings: { ...state.settings, ...updates } }));
@@ -613,6 +739,8 @@ export const useStore = create<CRMStore>()(
         snoozeSubscriptions: state.snoozeSubscriptions,
         activities: state.activities,
         timerSessions: state.timerSessions,
+        workspaces: state.workspaces,
+        invitations: state.invitations,
         settings: state.settings,
         users: state.users,
         auditLogs: state.auditLogs,

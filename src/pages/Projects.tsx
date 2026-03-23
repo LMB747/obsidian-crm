@@ -5,10 +5,11 @@ import {
   Circle, CheckCircle2, AlertCircle, Pause,
   Edit2, Trash2, Target, ArrowUpRight, BarChart3,
   List, Columns, AlertTriangle, Download, Search, X,
-  Activity, MessageSquare, FolderPlus, ArrowRight, Flag, FileText
+  Activity, MessageSquare, FolderPlus, ArrowRight, Flag, FileText,
+  Crosshair, Layers, Tag
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { Project, ProjectStatus, Task, Freelancer } from '../types';
+import { Project, ProjectStatus, Task, Freelancer, Objective, ProjectSubCategory } from '../types';
 import { Badge } from '../components/ui/Badge';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { Modal } from '../components/ui/Modal';
@@ -251,7 +252,7 @@ const ProjectTeam: React.FC<{
 
 export const Projects: React.FC = () => {
   const store = useStore();
-  const { projects, updateProject, deleteProject, updateTask, addTask, deleteTask, searchQuery, clients, addProject, addFreelancerToProject, removeFreelancerFromProject, freelancers } = store;
+  const { projects, updateProject, deleteProject, updateTask, addTask, deleteTask, searchQuery, clients, addProject, addFreelancerToProject, removeFreelancerFromProject, freelancers, addObjective, updateObjective, deleteObjective, addSubCategory, deleteSubCategory } = store;
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [expandedProject, setExpandedProject] = useState<string | null>(projects[0]?.id || null);
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'tous'>('tous');
@@ -259,7 +260,16 @@ export const Projects: React.FC = () => {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [addTaskModal, setAddTaskModal] = useState<string | null>(null);
   const [newTask, setNewTask] = useState({ titre: '', description: '', assigneA: '', dateEcheance: '', heuresEstimees: 8, priorite: 'normale' as Task['priorite'], statut: 'todo' as Task['statut'], tags: [] as string[] });
-  const [projectTab, setProjectTab] = useState<Record<string, 'tasks' | 'equipe' | 'timeline'>>({});
+  const [projectTab, setProjectTab] = useState<Record<string, 'tasks' | 'equipe' | 'objectives' | 'timeline'>>({});
+
+  // Objectives modal
+  const [addObjModal, setAddObjModal] = useState<string | null>(null);
+  const [newObj, setNewObj] = useState({ titre: '', description: '', dateEcheance: '', priorite: 'normale' as Task['priorite'], assigneAIds: [] as string[], taskIds: [] as string[] });
+
+  // Sub-category modal
+  const [addSubCatModal, setAddSubCatModal] = useState<string | null>(null);
+  const [newSubCat, setNewSubCat] = useState({ nom: '', description: '', couleur: '#7c3aed' });
+  const SUB_CAT_COLORS = ['#7c3aed', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899'];
 
   // ── Add Project Modal ──────────────────────────────────────────────────────
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -650,7 +660,8 @@ export const Projects: React.FC = () => {
                     {/* Tab bar */}
                     <div className="flex items-center gap-1 px-5 pt-3 border-b border-card-border/50">
                       {([
-                        { id: 'tasks', label: 'Tâches & Milestones', icon: CheckSquare },
+                        { id: 'tasks', label: 'Tâches', icon: CheckSquare },
+                        { id: 'objectives', label: 'Objectifs', icon: Crosshair },
                         { id: 'equipe', label: 'Équipe', icon: Users },
                         { id: 'timeline', label: 'Timeline', icon: Activity },
                       ] as const).map(tab => (
@@ -673,6 +684,140 @@ export const Projects: React.FC = () => {
                     {(projectTab[project.id] ?? 'tasks') === 'timeline' && (
                       <div className="p-5">
                         <ProjectTimeline project={project} />
+                      </div>
+                    )}
+
+                    {/* Objectives tab */}
+                    {(projectTab[project.id] ?? 'tasks') === 'objectives' && (
+                      <div className="p-5 space-y-5">
+                        {/* Sub-categories */}
+                        <div>
+                          <div className="flex items-center justify-between mb-3">
+                            <h4 className="text-sm font-semibold text-white flex items-center gap-2"><Layers className="w-4 h-4 text-primary-400" /> Sous-catégories</h4>
+                            <button
+                              onClick={() => { setAddSubCatModal(project.id); setNewSubCat({ nom: '', description: '', couleur: '#7c3aed' }); }}
+                              className="flex items-center gap-1 text-xs text-primary-400 hover:text-primary-300 border border-primary-500/30 px-2 py-1 rounded-lg hover:bg-primary-500/10 transition-all"
+                            >
+                              <Plus className="w-3 h-3" /> Ajouter
+                            </button>
+                          </div>
+                          {(project.subCategories || []).length === 0 ? (
+                            <p className="text-xs text-slate-500 text-center py-3">Aucune sous-catégorie</p>
+                          ) : (
+                            <div className="flex flex-wrap gap-2">
+                              {(project.subCategories || []).map(sc => (
+                                <div key={sc.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-card-border bg-card">
+                                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: sc.couleur }} />
+                                  <span className="text-xs text-white font-medium">{sc.nom}</span>
+                                  <button onClick={() => deleteSubCategory(project.id, sc.id)} className="text-slate-600 hover:text-red-400 transition-colors"><X className="w-3 h-3" /></button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Objectives */}
+                        <div>
+                          <div className="flex items-center justify-between mb-3">
+                            <h4 className="text-sm font-semibold text-white flex items-center gap-2"><Crosshair className="w-4 h-4 text-accent-cyan" /> Objectifs ({(project.objectives || []).length})</h4>
+                            <button
+                              onClick={() => { setAddObjModal(project.id); setNewObj({ titre: '', description: '', dateEcheance: '', priorite: 'normale', assigneAIds: [], taskIds: [] }); }}
+                              className="flex items-center gap-1 text-xs text-accent-cyan hover:text-cyan-300 border border-accent-cyan/30 px-2 py-1 rounded-lg hover:bg-accent-cyan/10 transition-all"
+                            >
+                              <Plus className="w-3 h-3" /> Nouvel objectif
+                            </button>
+                          </div>
+                          {(project.objectives || []).length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-8 bg-obsidian-900/50 rounded-xl border border-card-border/50 text-slate-500">
+                              <Crosshair className="w-8 h-8 mb-2 opacity-30" />
+                              <p className="text-sm">Aucun objectif défini</p>
+                              <p className="text-xs text-slate-600 mt-1">Les objectifs regroupent des tâches et sont visibles par les freelancers</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {(project.objectives || []).map(obj => {
+                                const linkedTasks = project.taches.filter(t => obj.taskIds.includes(t.id));
+                                const doneTasks = linkedTasks.filter(t => t.statut === 'fait').length;
+                                const progress = linkedTasks.length > 0 ? Math.round((doneTasks / linkedTasks.length) * 100) : 0;
+                                const assignedNames = (obj.assigneAIds || []).map(id => {
+                                  const f = freelancers.find(fl => fl.id === id);
+                                  return f ? `${f.prenom} ${f.nom}` : '';
+                                }).filter(Boolean);
+                                const objStatusCls = obj.statut === 'fait' ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
+                                  : obj.statut === 'en cours' ? 'bg-primary-500/20 border-primary-500/30 text-primary-400'
+                                  : 'bg-slate-500/20 border-slate-500/30 text-slate-400';
+
+                                return (
+                                  <div key={obj.id} className="bg-card border border-card-border rounded-xl p-4 hover:border-primary-500/30 transition-all">
+                                    <div className="flex items-start justify-between gap-3 mb-2">
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <h5 className="text-sm font-semibold text-white">{obj.titre}</h5>
+                                          <span className={clsx('px-2 py-0.5 rounded-full text-[10px] font-semibold border', objStatusCls)}>
+                                            {obj.statut === 'fait' ? 'Terminé' : obj.statut === 'en cours' ? 'En cours' : 'À faire'}
+                                          </span>
+                                        </div>
+                                        {obj.description && <p className="text-xs text-slate-400 line-clamp-2">{obj.description}</p>}
+                                      </div>
+                                      <div className="flex items-center gap-1 flex-shrink-0">
+                                        <select
+                                          value={obj.statut}
+                                          onChange={e => updateObjective(project.id, obj.id, { statut: e.target.value as Objective['statut'] })}
+                                          className="bg-obsidian-700 border border-card-border rounded-lg text-xs text-white px-2 py-1 focus:outline-none"
+                                        >
+                                          <option value="todo">À faire</option>
+                                          <option value="en cours">En cours</option>
+                                          <option value="fait">Terminé</option>
+                                        </select>
+                                        <button onClick={() => deleteObjective(project.id, obj.id)} className="p-1 text-slate-600 hover:text-red-400 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                                      </div>
+                                    </div>
+                                    {/* Progress bar */}
+                                    <div className="mb-2">
+                                      <div className="flex items-center justify-between text-[10px] text-slate-500 mb-1">
+                                        <span>{doneTasks}/{linkedTasks.length} tâches</span>
+                                        <span>{progress}%</span>
+                                      </div>
+                                      <div className="h-1.5 rounded-full bg-obsidian-900 overflow-hidden">
+                                        <div className="h-full rounded-full bg-gradient-to-r from-accent-cyan to-primary-500 transition-all" style={{ width: `${progress}%` }} />
+                                      </div>
+                                    </div>
+                                    {/* Assigned freelancers */}
+                                    {assignedNames.length > 0 && (
+                                      <div className="flex items-center gap-1 flex-wrap mt-2">
+                                        <Users className="w-3 h-3 text-slate-500" />
+                                        {assignedNames.map(name => (
+                                          <span key={name} className="text-[10px] bg-obsidian-700 text-slate-300 px-2 py-0.5 rounded-full border border-card-border">{name}</span>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {/* Linked tasks */}
+                                    {linkedTasks.length > 0 && (
+                                      <div className="mt-2 space-y-1">
+                                        {linkedTasks.map(t => (
+                                          <div key={t.id} className="flex items-center gap-2 text-xs">
+                                            {t.statut === 'fait'
+                                              ? <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                              : t.statut === 'en cours'
+                                              ? <Circle className="w-3 h-3 text-primary-400 fill-current opacity-50" />
+                                              : <Circle className="w-3 h-3 text-slate-500" />}
+                                            <span className={clsx(t.statut === 'fait' ? 'text-slate-500 line-through' : 'text-slate-300')}>{t.titre}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {obj.dateEcheance && (
+                                      <div className="flex items-center gap-1 mt-2 text-[10px] text-slate-500">
+                                        <Calendar className="w-3 h-3" />
+                                        <span>Échéance : {new Date(obj.dateEcheance).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
 
@@ -1174,6 +1319,194 @@ export const Projects: React.FC = () => {
             </button>
           </div>
         </div>
+      </Modal>
+
+      {/* ── Add SubCategory Modal ──────────────────────────────────────── */}
+      <Modal isOpen={!!addSubCatModal} onClose={() => setAddSubCatModal(null)} title="Nouvelle sous-catégorie" size="sm">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 mb-1.5">Nom <span className="text-accent-red">*</span></label>
+            <input
+              value={newSubCat.nom}
+              onChange={e => setNewSubCat(s => ({ ...s, nom: e.target.value }))}
+              className={INPUT_CLASS}
+              placeholder="Ex: Design, Développement..."
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 mb-1.5">Description</label>
+            <input
+              value={newSubCat.description}
+              onChange={e => setNewSubCat(s => ({ ...s, description: e.target.value }))}
+              className={INPUT_CLASS}
+              placeholder="Description optionnelle..."
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 mb-1.5">Couleur</label>
+            <div className="flex gap-2">
+              {SUB_CAT_COLORS.map(c => (
+                <button
+                  key={c}
+                  onClick={() => setNewSubCat(s => ({ ...s, couleur: c }))}
+                  className={clsx('w-8 h-8 rounded-lg border-2 transition-all', newSubCat.couleur === c ? 'border-white scale-110' : 'border-transparent opacity-60 hover:opacity-100')}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button onClick={() => setAddSubCatModal(null)} className="flex-1 py-2.5 rounded-xl border border-card-border text-slate-400 text-sm font-medium hover:bg-card-hover hover:text-white transition-all">Annuler</button>
+            <button
+              onClick={() => {
+                if (!addSubCatModal || !newSubCat.nom.trim()) return;
+                addSubCategory(addSubCatModal, { nom: newSubCat.nom, description: newSubCat.description, couleur: newSubCat.couleur, ordre: (projects.find(p => p.id === addSubCatModal)?.subCategories || []).length });
+                setAddSubCatModal(null);
+              }}
+              disabled={!newSubCat.nom.trim()}
+              className="flex-1 py-2.5 rounded-xl bg-gradient-primary text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+            >
+              Créer
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── Add Objective Modal ────────────────────────────────────────── */}
+      <Modal isOpen={!!addObjModal} onClose={() => setAddObjModal(null)} title="Nouvel objectif" size="lg">
+        {(() => {
+          const project = projects.find(p => p.id === addObjModal);
+          if (!project) return null;
+          const projectFreelancersList = freelancers.filter(f => (project.freelancerIds || []).includes(f.id));
+          return (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Titre <span className="text-accent-red">*</span></label>
+                <input
+                  value={newObj.titre}
+                  onChange={e => setNewObj(o => ({ ...o, titre: e.target.value }))}
+                  className={INPUT_CLASS}
+                  placeholder="Ex: Livrer la maquette V1..."
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Description</label>
+                <textarea
+                  value={newObj.description}
+                  onChange={e => setNewObj(o => ({ ...o, description: e.target.value }))}
+                  className={INPUT_CLASS}
+                  rows={2}
+                  placeholder="Détails de l'objectif..."
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Échéance</label>
+                  <input
+                    type="date"
+                    value={newObj.dateEcheance}
+                    onChange={e => setNewObj(o => ({ ...o, dateEcheance: e.target.value }))}
+                    className={INPUT_CLASS}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Priorité</label>
+                  <select
+                    value={newObj.priorite}
+                    onChange={e => setNewObj(o => ({ ...o, priorite: e.target.value as Task['priorite'] }))}
+                    className={INPUT_CLASS}
+                  >
+                    <option value="faible">Faible</option>
+                    <option value="normale">Normale</option>
+                    <option value="haute">Haute</option>
+                    <option value="urgente">Urgente</option>
+                  </select>
+                </div>
+              </div>
+              {/* Freelancer assignment (multi-select) */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Freelancers assignés</label>
+                {projectFreelancersList.length === 0 ? (
+                  <p className="text-xs text-slate-500">Aucun freelancer sur ce projet</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {projectFreelancersList.map(f => {
+                      const isSelected = newObj.assigneAIds.includes(f.id);
+                      return (
+                        <button
+                          key={f.id}
+                          onClick={() => setNewObj(o => ({
+                            ...o,
+                            assigneAIds: isSelected ? o.assigneAIds.filter(id => id !== f.id) : [...o.assigneAIds, f.id]
+                          }))}
+                          className={clsx(
+                            'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
+                            isSelected ? 'bg-primary-500/20 border-primary-500/50 text-primary-300' : 'bg-card border-card-border text-slate-400 hover:border-primary-500/30'
+                          )}
+                        >
+                          {f.prenom} {f.nom}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              {/* Task linking (multi-select) */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Tâches liées</label>
+                {(project.taches || []).length === 0 ? (
+                  <p className="text-xs text-slate-500">Aucune tâche dans ce projet</p>
+                ) : (
+                  <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
+                    {(project.taches || []).map(t => {
+                      const isLinked = newObj.taskIds.includes(t.id);
+                      const tCfg = taskStatusConfig[t.statut];
+                      return (
+                        <button
+                          key={t.id}
+                          onClick={() => setNewObj(o => ({
+                            ...o,
+                            taskIds: isLinked ? o.taskIds.filter(id => id !== t.id) : [...o.taskIds, t.id]
+                          }))}
+                          className={clsx(
+                            'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs border transition-all text-left',
+                            isLinked ? 'bg-accent-cyan/10 border-accent-cyan/30' : 'bg-card border-card-border hover:border-accent-cyan/20'
+                          )}
+                        >
+                          <CheckSquare className={clsx('w-3.5 h-3.5 flex-shrink-0', isLinked ? 'text-accent-cyan' : 'text-slate-600')} />
+                          <span className={clsx('flex-1', isLinked ? 'text-white' : 'text-slate-400')}>{t.titre}</span>
+                          <span className={clsx('px-1.5 py-0.5 rounded text-[10px] border', tCfg.bg, tCfg.color)}>{tCfg.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setAddObjModal(null)} className="flex-1 py-2.5 rounded-xl border border-card-border text-slate-400 text-sm font-medium hover:bg-card-hover hover:text-white transition-all">Annuler</button>
+                <button
+                  onClick={() => {
+                    if (!addObjModal || !newObj.titre.trim()) return;
+                    addObjective(addObjModal, {
+                      titre: newObj.titre,
+                      description: newObj.description,
+                      statut: 'todo',
+                      dateEcheance: newObj.dateEcheance,
+                      priorite: newObj.priorite,
+                      assigneAIds: newObj.assigneAIds,
+                      taskIds: newObj.taskIds,
+                    });
+                    setAddObjModal(null);
+                  }}
+                  disabled={!newObj.titre.trim()}
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-accent-cyan to-primary-500 text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+                >
+                  Créer l'objectif
+                </button>
+              </div>
+            </div>
+          );
+        })()}
       </Modal>
     </div>
   );

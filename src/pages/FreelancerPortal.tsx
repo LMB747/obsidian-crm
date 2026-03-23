@@ -2,11 +2,12 @@ import React, { useState, useMemo } from 'react';
 import {
   Target, CheckCircle2, Clock, PlayCircle,
   AlertCircle, Calendar, TrendingUp, Briefcase,
-  ChevronRight, ListTodo, MessageSquare, Send, ChevronDown, ChevronUp, X
+  ChevronRight, ListTodo, MessageSquare, Send, ChevronDown, ChevronUp, X,
+  Crosshair
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useStore } from '../store/useStore';
-import { Task, Project } from '../types';
+import { Task, Project, Objective } from '../types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const PRIORITY_CONFIG = {
@@ -222,7 +223,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, project, onStatusChange, onAd
 
 // ─── FreelancerPortal ─────────────────────────────────────────────────────────
 export const FreelancerPortal: React.FC = () => {
-  const { currentUser, projects, updateTask, addTaskNote, setActiveSection, timerSessions } = useStore();
+  const { currentUser, projects, updateTask, addTaskNote, setActiveSection, timerSessions, updateObjective } = useStore();
 
   if (!currentUser) return null;
 
@@ -270,6 +271,19 @@ export const FreelancerPortal: React.FC = () => {
     }
     return [...map.values()];
   }, [assignedTasks]);
+
+  // Find all objectives assigned to this freelancer
+  const assignedObjectives = useMemo(() => {
+    const result: { objective: Objective; project: Project }[] = [];
+    for (const project of projects) {
+      for (const obj of (project.objectives || [])) {
+        if ((obj.assigneAIds || []).includes(currentUser.id)) {
+          result.push({ objective: obj, project });
+        }
+      }
+    }
+    return result;
+  }, [projects, currentUser]);
 
   const handleStatusChange = (taskId: string, projectId: string, statut: Task['statut']) => {
     const prevTask = projects.find(p => p.id === projectId)?.taches.find(t => t.id === taskId);
@@ -390,6 +404,112 @@ export const FreelancerPortal: React.FC = () => {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ── Objectives Section ──────────────────────────────────────── */}
+      {assignedObjectives.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-accent-cyan/20 flex items-center justify-center flex-shrink-0">
+              <Crosshair className="w-4 h-4 text-accent-cyan" />
+            </div>
+            <h2 className="font-bold text-white">Mes objectifs</h2>
+            <div className="flex-1 h-px bg-card-border" />
+            <span className="text-slate-500 text-xs flex-shrink-0">{assignedObjectives.length} objectif{assignedObjectives.length > 1 ? 's' : ''}</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {assignedObjectives.map(({ objective: obj, project }) => {
+              const linkedTasks = project.taches.filter(t => obj.taskIds.includes(t.id));
+              const doneTasks = linkedTasks.filter(t => t.statut === 'fait').length;
+              const progress = linkedTasks.length > 0 ? Math.round((doneTasks / linkedTasks.length) * 100) : 0;
+              const objStatusCls = obj.statut === 'fait' ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                : obj.statut === 'en cours' ? 'bg-accent-cyan/20 text-accent-cyan border-accent-cyan/30'
+                : 'bg-slate-500/20 text-slate-400 border-slate-500/30';
+
+              return (
+                <div key={obj.id} className="bg-card border border-card-border rounded-xl p-5 hover:border-accent-cyan/30 transition-all space-y-3">
+                  {/* Header */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <span className={clsx('px-2 py-0.5 rounded-full text-xs font-medium mb-1.5 inline-block', PROJECT_STATUS_COLORS[project.statut] ?? 'bg-slate-500/20 text-slate-400')}>
+                        {project.nom}
+                      </span>
+                      <h3 className="font-semibold text-white text-sm">{obj.titre}</h3>
+                      {obj.description && <p className="text-xs text-slate-400 mt-1 line-clamp-2">{obj.description}</p>}
+                    </div>
+                    <span className={clsx('px-2.5 py-1 rounded-full text-xs font-semibold border flex-shrink-0', objStatusCls)}>
+                      {obj.statut === 'fait' ? 'Terminé' : obj.statut === 'en cours' ? 'En cours' : 'À faire'}
+                    </span>
+                  </div>
+
+                  {/* Meta */}
+                  <div className="flex items-center gap-3 text-xs text-slate-500">
+                    {obj.dateEcheance && (
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5" />
+                        {new Date(obj.dateEcheance).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
+                      </span>
+                    )}
+                    <span>{doneTasks}/{linkedTasks.length} tâches terminées</span>
+                  </div>
+
+                  {/* Progress */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-xs text-slate-500">
+                      <span>Progression</span>
+                      <span>{progress}%</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-obsidian-900 overflow-hidden">
+                      <div className="h-full rounded-full bg-gradient-to-r from-accent-cyan to-primary-500 transition-all" style={{ width: `${progress}%` }} />
+                    </div>
+                  </div>
+
+                  {/* Linked tasks mini list */}
+                  {linkedTasks.length > 0 && (
+                    <div className="space-y-1">
+                      {linkedTasks.slice(0, 4).map(t => {
+                        const tCfg = STATUS_CONFIG[t.statut];
+                        const TIcon = tCfg.icon;
+                        return (
+                          <div key={t.id} className="flex items-center gap-2 text-xs">
+                            <TIcon className={clsx('w-3 h-3', tCfg.className.includes('green') ? 'text-green-400' : tCfg.className.includes('cyan') ? 'text-accent-cyan' : 'text-slate-400')} />
+                            <span className={clsx('flex-1 truncate', t.statut === 'fait' ? 'text-slate-500 line-through' : 'text-slate-300')}>{t.titre}</span>
+                          </div>
+                        );
+                      })}
+                      {linkedTasks.length > 4 && <p className="text-[10px] text-slate-600">+{linkedTasks.length - 4} autres tâches</p>}
+                    </div>
+                  )}
+
+                  {/* Status buttons */}
+                  <div className="flex gap-2 pt-1">
+                    {(['todo', 'en cours', 'fait'] as Objective['statut'][]).map(s => {
+                      const label = s === 'fait' ? 'Terminé' : s === 'en cours' ? 'En cours' : 'À faire';
+                      const cfg = STATUS_CONFIG[s];
+                      const Icon = cfg.icon;
+                      return (
+                        <button
+                          key={s}
+                          onClick={() => updateObjective(project.id, obj.id, { statut: s })}
+                          className={clsx(
+                            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border',
+                            obj.statut === s
+                              ? cfg.className
+                              : 'border-card-border text-slate-500 hover:text-white hover:border-slate-500'
+                          )}
+                        >
+                          <Icon className="w-3 h-3" />
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

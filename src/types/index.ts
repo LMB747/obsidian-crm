@@ -65,11 +65,13 @@ export interface Task {
   statut: 'todo' | 'en cours' | 'fait';
   priorite: ProjectPriority;
   assigneA: string;
+  assigneAIds?: string[];      // IDs des freelancers assignés (multi-assignation)
   dateEcheance: string;
   heuresEstimees: number;
   heuresReelles: number;
   tags: string[];
   notes: TaskNote[];
+  subCategoryId?: string;      // lien vers une sous-catégorie du projet
 }
 
 export interface Milestone {
@@ -99,6 +101,8 @@ export interface Project {
   tags: string[];
   categorie: string;
   activityLog: ProjectActivity[];
+  objectives?: Objective[];    // objectifs du projet
+  subCategories?: ProjectSubCategory[]; // sous-catégories
 }
 
 // ─── INVOICE ──────────────────────────────────────────────────────────────────
@@ -245,6 +249,8 @@ export interface CRMStore {
   snoozeSubscriptions: SnoozeSubscription[];
   activities: Activity[];
   timerSessions: TimerSession[];
+  workspaces: Workspace[];
+  invitations: Invitation[];
 
   // Settings
   settings: AgencySettings;
@@ -285,6 +291,26 @@ export interface CRMStore {
   updateSnoozeSubscription: (id: string, updates: Partial<SnoozeSubscription>) => void;
   deleteSnoozeSubscription: (id: string) => void;
   clearAllSnoozeSubscriptions: () => void;
+
+  // Actions — Workspaces
+  addWorkspace: (ws: Omit<Workspace, 'id' | 'dateCreation'>) => void;
+  updateWorkspace: (id: string, updates: Partial<Workspace>) => void;
+  deleteWorkspace: (id: string) => void;
+
+  // Actions — Invitations
+  createInvitation: (inv: Omit<Invitation, 'id' | 'token' | 'dateCreation' | 'status'>) => Invitation;
+  acceptInvitation: (token: string) => { success: boolean; error?: string };
+  deleteInvitation: (id: string) => void;
+
+  // Actions — Objectives
+  addObjective: (projectId: string, obj: Omit<Objective, 'id' | 'dateCreation' | 'progression'>) => void;
+  updateObjective: (projectId: string, objectiveId: string, updates: Partial<Objective>) => void;
+  deleteObjective: (projectId: string, objectiveId: string) => void;
+
+  // Actions — Project SubCategories
+  addSubCategory: (projectId: string, sub: Omit<ProjectSubCategory, 'id'>) => void;
+  updateSubCategory: (projectId: string, subId: string, updates: Partial<ProjectSubCategory>) => void;
+  deleteSubCategory: (projectId: string, subId: string) => void;
 
   // Actions — Settings
   updateSettings: (updates: Partial<AgencySettings>) => void;
@@ -392,4 +418,58 @@ export interface AuditLog {
   details?: string;
   date: string;
   ip?: string;
+}
+
+// ─── WORKSPACE / ESPACE ──────────────────────────────────────────────────────
+export interface Workspace {
+  id: string;
+  nom: string;
+  description: string;
+  couleur: string;             // ex: '#7c3aed'
+  createdBy: string;           // userId de l'admin qui l'a créé
+  dateCreation: string;
+  membres: WorkspaceMember[];
+}
+
+export interface WorkspaceMember {
+  userId: string;
+  role: 'owner' | 'member' | 'viewer';
+  dateAjout: string;
+}
+
+// ─── INVITATION ──────────────────────────────────────────────────────────────
+export interface Invitation {
+  id: string;
+  workspaceId: string;
+  email: string;
+  role: UserRole;
+  token: string;               // token unique pour le lien d'invitation
+  expiresAt: string;           // date d'expiration ISO
+  status: 'pending' | 'accepted' | 'expired';
+  createdBy: string;
+  dateCreation: string;
+  permissions: SectionPermission[];
+}
+
+// ─── OBJECTIF (dans un projet) ───────────────────────────────────────────────
+export interface Objective {
+  id: string;
+  titre: string;
+  description: string;
+  statut: 'todo' | 'en cours' | 'fait';
+  priorite: ProjectPriority;
+  dateEcheance: string;
+  assigneAIds: string[];       // IDs des freelancers assignés
+  taskIds: string[];           // IDs des tâches liées
+  progression: number;         // 0-100, calculé auto depuis les tâches
+  dateCreation: string;
+}
+
+// ─── SOUS-CATÉGORIE PROJET ───────────────────────────────────────────────────
+export interface ProjectSubCategory {
+  id: string;
+  nom: string;
+  description: string;
+  couleur: string;
+  ordre: number;
 }

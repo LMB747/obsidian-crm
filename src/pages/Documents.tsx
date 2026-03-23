@@ -146,6 +146,7 @@ export const Documents: React.FC = () => {
   const [clientSearch, setClientSearch]   = useState('');
   const [showClientSearch, setShowClientSearch] = useState(false);
   const [selectedFreelancerId, setSelectedFreelancerId] = useState('');
+  const [selectedFreelancerIds, setSelectedFreelancerIds] = useState<string[]>([]);
   const [freelancerSearch, setFreelancerSearch] = useState('');
   const [showFreelancerSearch, setShowFreelancerSearch] = useState(false);
   const [iframeLoaded, setIframeLoaded]   = useState(false);
@@ -228,6 +229,32 @@ export const Documents: React.FC = () => {
     () => freelancers.find(f => f.id === selectedFreelancerId) ?? null,
     [selectedFreelancerId, freelancers]
   );
+
+  // Multi-freelancers (pour les contrats)
+  const selectedContractFreelancers = useMemo(
+    () => freelancers.filter(f => selectedFreelancerIds.includes(f.id)),
+    [selectedFreelancerIds, freelancers]
+  );
+
+  const addContractFreelancer = (id: string) => {
+    if (!selectedFreelancerIds.includes(id)) {
+      setSelectedFreelancerIds(prev => [...prev, id]);
+      // Aussi mettre le premier comme freelancer principal pour injection
+      if (!selectedFreelancerId) setSelectedFreelancerId(id);
+    }
+    setFreelancerSearch('');
+    setShowFreelancerSearch(false);
+    setInjected(false);
+  };
+
+  const removeContractFreelancer = (id: string) => {
+    setSelectedFreelancerIds(prev => prev.filter(fid => fid !== id));
+    if (selectedFreelancerId === id) {
+      const remaining = selectedFreelancerIds.filter(fid => fid !== id);
+      setSelectedFreelancerId(remaining[0] || '');
+    }
+    setInjected(false);
+  };
 
   // ── Filtered freelancers for search ──────────────────────────────────────────
   const filteredFreelancers = useMemo(() => {
@@ -515,6 +542,7 @@ export const Documents: React.FC = () => {
     setSelectedClientId('');
     setClientSearch('');
     setSelectedFreelancerId('');
+    setSelectedFreelancerIds([]);
     setFreelancerSearch('');
     setItems([newItem()]);
     setForm({
@@ -615,6 +643,8 @@ export const Documents: React.FC = () => {
                   <>
                     <FieldInput label="Date début" type="date" value={form.dateDebut} onChange={setF('dateDebut')} />
                     <FieldInput label="Date fin" type="date" value={form.dateFin} onChange={setF('dateFin')} />
+                    <FieldInput label="Échéance paiement" type="date" value={form.echeance} onChange={setF('echeance')} />
+                    <FieldInput label="Validité" type="date" value={form.validite} onChange={setF('validite')} />
                   </>
                 )}
               </div>
@@ -747,16 +777,17 @@ export const Documents: React.FC = () => {
           {/* ── Section: Prestataire ─────────────────────────────────────── */}
           <SectionHeader
             icon={Briefcase}
-            title="Prestataire"
+            title={docType === 'contrat' ? 'Prestataire(s)' : 'Prestataire'}
             open={secPrestataire}
             onToggle={() => setSecPrestataire(p => !p)}
+            count={docType === 'contrat' ? selectedContractFreelancers.length : undefined}
           />
           {secPrestataire && (
             <div className="p-4 space-y-2.5 border-b border-card-border/50">
               {/* Freelancer search */}
               <div className="relative">
                 <label className="block text-[11px] font-semibold text-slate-400 mb-1 uppercase tracking-wide">
-                  Sélectionner un prestataire
+                  {docType === 'contrat' ? 'Ajouter un prestataire au contrat' : 'Sélectionner un prestataire'}
                 </label>
                 <div className="relative">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
@@ -783,10 +814,14 @@ export const Documents: React.FC = () => {
                       <button
                         key={f.id}
                         onClick={() => {
-                          setSelectedFreelancerId(f.id);
-                          setFreelancerSearch(`${f.prenom} ${f.nom} — ${f.entreprise}`);
-                          setShowFreelancerSearch(false);
-                          setInjected(false);
+                          if (docType === 'contrat') {
+                            addContractFreelancer(f.id);
+                          } else {
+                            setSelectedFreelancerId(f.id);
+                            setFreelancerSearch(`${f.prenom} ${f.nom} — ${f.entreprise}`);
+                            setShowFreelancerSearch(false);
+                            setInjected(false);
+                          }
                         }}
                         className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-primary-500/10 transition-colors text-left"
                       >
@@ -804,42 +839,80 @@ export const Documents: React.FC = () => {
                 )}
               </div>
 
-              {/* Selected freelancer preview card */}
-              {selectedFreelancer && (
-                <div className="bg-primary-500/10 border border-primary-500/30 rounded-xl p-3 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
-                      <span className="text-white text-xs font-bold">{selectedFreelancer.prenom.charAt(0)}{selectedFreelancer.nom.charAt(0)}</span>
-                    </div>
-                    <div>
-                      <p className="text-white text-xs font-bold">{selectedFreelancer.prenom} {selectedFreelancer.nom}</p>
-                      <p className="text-primary-300 text-[10px]">{selectedFreelancer.entreprise}</p>
-                    </div>
+              {/* Selected freelancer preview cards */}
+              {docType === 'contrat' ? (
+                // Multi-freelancer mode for contracts
+                selectedContractFreelancers.length > 0 ? (
+                  <div className="space-y-2">
+                    {selectedContractFreelancers.map(f => (
+                      <div key={f.id} className="bg-primary-500/10 border border-primary-500/30 rounded-xl p-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
+                            <span className="text-white text-xs font-bold">{f.prenom.charAt(0)}{f.nom.charAt(0)}</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white text-xs font-bold">{f.prenom} {f.nom}</p>
+                            <p className="text-primary-300 text-[10px]">{f.entreprise} · {f.specialite}</p>
+                          </div>
+                          <button
+                            onClick={() => removeContractFreelancer(f.id)}
+                            className="p-1 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-all flex-shrink-0"
+                            title="Retirer du contrat"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] mt-2">
+                          <div className="flex items-center gap-1 text-slate-400"><Hash className="w-3 h-3" /><span className="truncate">{f.siret || '—'}</span></div>
+                          <div className="flex items-center gap-1 text-slate-400"><Mail className="w-3 h-3" /><span className="truncate">{f.email}</span></div>
+                          <div className="flex items-center gap-1 text-slate-400"><MapPin className="w-3 h-3" /><span className="truncate">{f.adresse || '—'}</span></div>
+                          <div className="flex items-center gap-1 text-slate-400"><Euro className="w-3 h-3" /><span>{f.tjm} €/j</span></div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
-                    <div className="flex items-center gap-1 text-slate-400"><Hash className="w-3 h-3" /><span className="truncate">{selectedFreelancer.siret || '—'}</span></div>
-                    <div className="flex items-center gap-1 text-slate-400"><Mail className="w-3 h-3" /><span className="truncate">{selectedFreelancer.email}</span></div>
-                    <div className="flex items-center gap-1 text-slate-400"><MapPin className="w-3 h-3" /><span className="truncate">{selectedFreelancer.adresse || '—'}</span></div>
-                    <div className="flex items-center gap-1 text-slate-400"><Euro className="w-3 h-3" /><span>{selectedFreelancer.tjm} €/j</span></div>
-                  </div>
-                  <p className="text-[10px] text-slate-500">TVA : {selectedFreelancer.numeroTVA || '—'}</p>
-                </div>
-              )}
-
-              {!selectedFreelancer && (
-                <p className="text-[11px] text-slate-500 text-center py-1">
-                  Aucun prestataire sélectionné — le côté prestataire du document restera vide.
-                </p>
+                ) : (
+                  <p className="text-[11px] text-slate-500 text-center py-1">
+                    Aucun prestataire ajouté au contrat.
+                  </p>
+                )
+              ) : (
+                // Single freelancer mode for factures/devis
+                <>
+                  {selectedFreelancer && (
+                    <div className="bg-primary-500/10 border border-primary-500/30 rounded-xl p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
+                          <span className="text-white text-xs font-bold">{selectedFreelancer.prenom.charAt(0)}{selectedFreelancer.nom.charAt(0)}</span>
+                        </div>
+                        <div>
+                          <p className="text-white text-xs font-bold">{selectedFreelancer.prenom} {selectedFreelancer.nom}</p>
+                          <p className="text-primary-300 text-[10px]">{selectedFreelancer.entreprise}</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
+                        <div className="flex items-center gap-1 text-slate-400"><Hash className="w-3 h-3" /><span className="truncate">{selectedFreelancer.siret || '—'}</span></div>
+                        <div className="flex items-center gap-1 text-slate-400"><Mail className="w-3 h-3" /><span className="truncate">{selectedFreelancer.email}</span></div>
+                        <div className="flex items-center gap-1 text-slate-400"><MapPin className="w-3 h-3" /><span className="truncate">{selectedFreelancer.adresse || '—'}</span></div>
+                        <div className="flex items-center gap-1 text-slate-400"><Euro className="w-3 h-3" /><span>{selectedFreelancer.tjm} €/j</span></div>
+                      </div>
+                      <p className="text-[10px] text-slate-500">TVA : {selectedFreelancer.numeroTVA || '—'}</p>
+                    </div>
+                  )}
+                  {!selectedFreelancer && (
+                    <p className="text-[11px] text-slate-500 text-center py-1">
+                      Aucun prestataire sélectionné — le côté prestataire du document restera vide.
+                    </p>
+                  )}
+                </>
               )}
             </div>
           )}
 
-          {/* ── Section: Prestations (Facture + Devis) ───────────────────── */}
-          {docType !== 'contrat' && (
-            <>
+          {/* ── Section: Prestations / Clauses ───────────────────────────── */}
               <SectionHeader
                 icon={ArrowUpRight}
-                title="Prestations"
+                title={docType === 'contrat' ? 'Prestations / Clauses' : 'Prestations'}
                 open={secPrestations}
                 onToggle={() => setSecPrestations(p => !p)}
                 count={items.length}
@@ -867,12 +940,8 @@ export const Documents: React.FC = () => {
                   </button>
                 </div>
               )}
-            </>
-          )}
 
           {/* ── Section: Finance ─────────────────────────────────────────── */}
-          {docType !== 'contrat' && (
-            <>
               <SectionHeader icon={Euro} title="Financier" open={secFinance} onToggle={() => setSecFinance(p => !p)} />
               {secFinance && (
                 <div className="p-4 border-b border-card-border/50 space-y-3">
@@ -1022,8 +1091,6 @@ export const Documents: React.FC = () => {
                   )}
                 </div>
               )}
-            </>
-          )}
 
           {/* ── Section: Notes ───────────────────────────────────────────── */}
           <SectionHeader icon={StickyNote} title="Notes / Mentions" open={secNotes} onToggle={() => setSecNotes(p => !p)} />

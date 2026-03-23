@@ -4,11 +4,12 @@ import {
   LayoutDashboard, Briefcase, FolderKanban, Clock,
   FileText, FilePlus2, Moon, BarChart3, Settings,
   CheckCircle, XCircle, Search, Calendar, AlertTriangle,
-  LogIn, LogOut, ChevronRight, X, Save, RefreshCw
+  LogIn, LogOut, ChevronRight, X, Save, RefreshCw,
+  Building, Link2, Send, Copy, Globe, Mail
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useStore } from '../store/useStore';
-import { UserAccount, UserRole, SectionPermission } from '../types';
+import { UserAccount, UserRole, SectionPermission, Workspace, Invitation } from '../types';
 import { hashPassword } from '../utils/crypto';
 
 // ─── Permission section config ────────────────────────────────────────────────
@@ -315,13 +316,32 @@ const UserModal: React.FC<UserModalProps> = ({ user, onClose, onSave, freelancer
 };
 
 // ─── Main Admin Page ──────────────────────────────────────────────────────────
+// ─── Workspace colors ────────────────────────────────────────────────────────
+const WS_COLORS = ['#7c3aed', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#8b5cf6', '#14b8a6'];
+
 export const Admin: React.FC = () => {
-  const { users, auditLogs, freelancers, addUser, updateUser, deleteUser, addAuditLog } = useStore();
-  const [activeTab, setActiveTab] = useState<'accounts' | 'logs'>('accounts');
+  const { users, auditLogs, freelancers, workspaces, invitations, addUser, updateUser, deleteUser, addAuditLog, addWorkspace, updateWorkspace, deleteWorkspace, createInvitation, deleteInvitation } = useStore();
+  const [activeTab, setActiveTab] = useState<'accounts' | 'workspaces' | 'invitations' | 'logs'>('accounts');
   const [modalOpen, setModalOpen] = useState(false);
   const [editUser, setEditUser] = useState<UserAccount | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [clearLogsConfirm, setClearLogsConfirm] = useState(false);
+
+  // Workspace state
+  const [wsModalOpen, setWsModalOpen] = useState(false);
+  const [wsNom, setWsNom] = useState('');
+  const [wsDescription, setWsDescription] = useState('');
+  const [wsCouleur, setWsCouleur] = useState(WS_COLORS[0]);
+  const [editWsId, setEditWsId] = useState<string | null>(null);
+  const [deleteWsConfirm, setDeleteWsConfirm] = useState<string | null>(null);
+
+  // Invitation state
+  const [invModalOpen, setInvModalOpen] = useState(false);
+  const [invEmail, setInvEmail] = useState('');
+  const [invRole, setInvRole] = useState<UserRole>('freelancer');
+  const [invWorkspaceId, setInvWorkspaceId] = useState('');
+  const [invPermissions, setInvPermissions] = useState<SectionPermission[]>(DEFAULT_FREELANCER_PERMISSIONS);
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
   // Logs filters
   const [logSearch, setLogSearch] = useState('');
@@ -387,6 +407,79 @@ export const Admin: React.FC = () => {
     setClearLogsConfirm(false);
   };
 
+  // ── Workspace handlers ───────────────────────────────────────────────────
+  const handleOpenWsCreate = () => {
+    setEditWsId(null);
+    setWsNom('');
+    setWsDescription('');
+    setWsCouleur(WS_COLORS[0]);
+    setWsModalOpen(true);
+  };
+
+  const handleOpenWsEdit = (ws: Workspace) => {
+    setEditWsId(ws.id);
+    setWsNom(ws.nom);
+    setWsDescription(ws.description);
+    setWsCouleur(ws.couleur);
+    setWsModalOpen(true);
+  };
+
+  const handleSaveWs = () => {
+    if (!wsNom.trim()) return;
+    const currentUser = useStore.getState().currentUser;
+    if (editWsId) {
+      updateWorkspace(editWsId, { nom: wsNom.trim(), description: wsDescription.trim(), couleur: wsCouleur });
+    } else {
+      addWorkspace({
+        nom: wsNom.trim(),
+        description: wsDescription.trim(),
+        couleur: wsCouleur,
+        createdBy: currentUser?.id || '',
+        membres: [{ userId: currentUser?.id || '', role: 'owner', dateAjout: new Date().toISOString().split('T')[0] }],
+      });
+    }
+    setWsModalOpen(false);
+  };
+
+  const handleDeleteWs = (id: string) => {
+    deleteWorkspace(id);
+    setDeleteWsConfirm(null);
+  };
+
+  // ── Invitation handlers ─────────────────────────────────────────────────
+  const handleOpenInvCreate = () => {
+    setInvEmail('');
+    setInvRole('freelancer');
+    setInvWorkspaceId(workspaces[0]?.id || '');
+    setInvPermissions(DEFAULT_FREELANCER_PERMISSIONS);
+    setInvModalOpen(true);
+  };
+
+  const handleCreateInvitation = () => {
+    if (!invEmail.trim()) return;
+    const currentUser = useStore.getState().currentUser;
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 days
+    createInvitation({
+      workspaceId: invWorkspaceId,
+      email: invEmail.trim(),
+      role: invRole,
+      expiresAt,
+      createdBy: currentUser?.id || '',
+      permissions: invRole === 'admin' ? SECTION_CONFIG.map(s => s.id) : invPermissions,
+    });
+    setInvModalOpen(false);
+  };
+
+  const getInvitationLink = (token: string) => {
+    return `${window.location.origin}${window.location.pathname}#invite=${token}`;
+  };
+
+  const copyToClipboard = (token: string) => {
+    navigator.clipboard.writeText(getInvitationLink(token));
+    setCopiedToken(token);
+    setTimeout(() => setCopiedToken(null), 2000);
+  };
+
   const uniqueActions = useMemo(() => [...new Set(auditLogs.map(l => l.action))], [auditLogs]);
 
   const formatDate = (dateStr: string) => {
@@ -410,11 +503,13 @@ export const Admin: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-obsidian-800 border border-card-border rounded-xl p-1 w-fit">
+      <div className="flex gap-1 bg-obsidian-800 border border-card-border rounded-xl p-1 w-fit flex-wrap">
         {([
-          { id: 'accounts', label: 'Comptes', icon: Users },
-          { id: 'logs',     label: "Journaux d'audit", icon: Shield },
-        ] as { id: 'accounts' | 'logs'; label: string; icon: React.FC<{ className?: string }> }[]).map(tab => {
+          { id: 'accounts',    label: 'Comptes',          icon: Users },
+          { id: 'workspaces',  label: 'Espaces',          icon: Building },
+          { id: 'invitations', label: 'Invitations',      icon: Link2 },
+          { id: 'logs',        label: "Journaux d'audit", icon: Shield },
+        ] as { id: 'accounts' | 'workspaces' | 'invitations' | 'logs'; label: string; icon: React.FC<{ className?: string }> }[]).map(tab => {
           const Icon = tab.icon;
           return (
             <button
@@ -587,6 +682,166 @@ export const Admin: React.FC = () => {
         </div>
       )}
 
+      {/* ── WORKSPACES TAB ─────────────────────────────────────────────── */}
+      {activeTab === 'workspaces' && (
+        <div className="space-y-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-semibold text-white">Espaces de travail</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Créez des espaces et invitez des collaborateurs</p>
+            </div>
+            <button
+              onClick={handleOpenWsCreate}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-primary-600 to-purple-600 hover:from-primary-500 hover:to-purple-500 text-white text-sm font-semibold transition-all shadow-glow-purple"
+            >
+              <Plus className="w-4 h-4" />
+              Nouvel espace
+            </button>
+          </div>
+
+          {workspaces.length === 0 ? (
+            <div className="bg-card border border-card-border rounded-2xl p-12 text-center">
+              <Building className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+              <p className="text-slate-400 text-sm font-medium">Aucun espace créé</p>
+              <p className="text-slate-600 text-xs mt-1">Créez un espace pour organiser vos équipes et projets</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {workspaces.map(ws => (
+                <div key={ws.id} className="bg-card border border-card-border rounded-2xl p-5 hover:border-primary-500/30 transition-all">
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: ws.couleur + '25', border: `1px solid ${ws.couleur}40` }}>
+                      <Building className="w-5 h-5" style={{ color: ws.couleur }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-white font-semibold text-sm truncate">{ws.nom}</h3>
+                      <p className="text-slate-500 text-xs mt-0.5 line-clamp-2">{ws.description || 'Aucune description'}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between mt-4">
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                      <Users className="w-3.5 h-3.5" />
+                      <span>{ws.membres.length} membre{ws.membres.length > 1 ? 's' : ''}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button onClick={() => handleOpenWsEdit(ws)} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-obsidian-700 transition-all" title="Modifier">
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => setDeleteWsConfirm(ws.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all" title="Supprimer">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── INVITATIONS TAB ────────────────────────────────────────────── */}
+      {activeTab === 'invitations' && (
+        <div className="space-y-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-semibold text-white">Liens d'invitation</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Générez des liens de connexion pour vos collaborateurs</p>
+            </div>
+            <button
+              onClick={handleOpenInvCreate}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-primary-600 to-purple-600 hover:from-primary-500 hover:to-purple-500 text-white text-sm font-semibold transition-all shadow-glow-purple"
+            >
+              <Send className="w-4 h-4" />
+              Nouvelle invitation
+            </button>
+          </div>
+
+          {invitations.length === 0 ? (
+            <div className="bg-card border border-card-border rounded-2xl p-12 text-center">
+              <Link2 className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+              <p className="text-slate-400 text-sm font-medium">Aucune invitation</p>
+              <p className="text-slate-600 text-xs mt-1">Envoyez un lien de connexion sécurisé à un collaborateur</p>
+            </div>
+          ) : (
+            <div className="bg-card border border-card-border rounded-2xl overflow-hidden">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-card-border bg-obsidian-800/60">
+                    <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Email</th>
+                    <th className="text-left px-4 py-3.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Rôle</th>
+                    <th className="text-left px-4 py-3.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Espace</th>
+                    <th className="text-left px-4 py-3.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Statut</th>
+                    <th className="text-left px-4 py-3.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Expire</th>
+                    <th className="text-right px-5 py-3.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-card-border">
+                  {invitations.map(inv => {
+                    const ws = workspaces.find(w => w.id === inv.workspaceId);
+                    const isExpired = new Date(inv.expiresAt) < new Date();
+                    const statusDisplay = inv.status === 'accepted'
+                      ? { label: 'Acceptée', cls: 'bg-green-500/20 text-green-400' }
+                      : isExpired
+                        ? { label: 'Expirée', cls: 'bg-red-500/20 text-red-400' }
+                        : { label: 'En attente', cls: 'bg-amber-500/20 text-amber-400' };
+                    return (
+                      <tr key={inv.id} className="hover:bg-obsidian-800/40 transition-colors">
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-2">
+                            <Mail className="w-3.5 h-3.5 text-slate-500" />
+                            <span className="text-white text-sm">{inv.email}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-4">
+                          <span className={clsx('px-2.5 py-1 rounded-full text-xs font-semibold', ROLE_CONFIG[inv.role].className)}>
+                            {ROLE_CONFIG[inv.role].label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-slate-400 text-sm">{ws?.nom || '—'}</td>
+                        <td className="px-4 py-4">
+                          <span className={clsx('px-2.5 py-1 rounded-full text-xs font-semibold', statusDisplay.cls)}>
+                            {statusDisplay.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-slate-400 text-sm">
+                          {new Date(inv.expiresAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="flex items-center justify-end gap-2">
+                            {inv.status === 'pending' && !isExpired && (
+                              <button
+                                onClick={() => copyToClipboard(inv.token)}
+                                className={clsx(
+                                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all',
+                                  copiedToken === inv.token
+                                    ? 'bg-green-500/20 text-green-400'
+                                    : 'bg-primary-500/10 text-primary-400 hover:bg-primary-500/20'
+                                )}
+                                title="Copier le lien"
+                              >
+                                {copiedToken === inv.token ? <CheckCircle className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                                {copiedToken === inv.token ? 'Copié !' : 'Copier lien'}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => deleteInvitation(inv.id)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                              title="Supprimer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── LOGS TAB ───────────────────────────────────────────────────── */}
       {activeTab === 'logs' && (
         <div className="space-y-5">
@@ -718,6 +973,171 @@ export const Admin: React.FC = () => {
               <button onClick={() => handleDelete(deleteConfirm)} className="flex-1 py-2.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 text-sm font-semibold transition-all">
                 Supprimer
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL Workspace ───────────────────────────────────────────── */}
+      {wsModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-obsidian-800 border border-card-border rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-card-border">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-primary-500/20 flex items-center justify-center">
+                  <Building className="w-4 h-4 text-primary-400" />
+                </div>
+                <h2 className="font-bold text-white text-lg">{editWsId ? 'Modifier l\'espace' : 'Nouvel espace'}</h2>
+              </div>
+              <button onClick={() => setWsModalOpen(false)} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-6 space-y-5">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Nom de l'espace *</label>
+                <input
+                  value={wsNom}
+                  onChange={e => setWsNom(e.target.value)}
+                  className="w-full bg-obsidian-900 border border-card-border rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-primary-500/60"
+                  placeholder="Ex: Équipe Design"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Description</label>
+                <textarea
+                  value={wsDescription}
+                  onChange={e => setWsDescription(e.target.value)}
+                  rows={2}
+                  className="w-full bg-obsidian-900 border border-card-border rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-primary-500/60 resize-none"
+                  placeholder="Description optionnelle..."
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Couleur</label>
+                <div className="flex gap-2">
+                  {WS_COLORS.map(c => (
+                    <button
+                      key={c}
+                      onClick={() => setWsCouleur(c)}
+                      className={clsx('w-8 h-8 rounded-lg border-2 transition-all', wsCouleur === c ? 'border-white scale-110' : 'border-transparent')}
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-card-border">
+              <button onClick={() => setWsModalOpen(false)} className="px-5 py-2.5 rounded-xl border border-card-border text-slate-400 hover:text-white text-sm font-medium transition-all">Annuler</button>
+              <button onClick={handleSaveWs} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary-600 to-purple-600 text-white text-sm font-semibold transition-all shadow-glow-purple">
+                <Save className="w-4 h-4" />
+                {editWsId ? 'Modifier' : 'Créer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL Invitation ──────────────────────────────────────────── */}
+      {invModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-obsidian-800 border border-card-border rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-card-border">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-accent-cyan/20 flex items-center justify-center">
+                  <Send className="w-4 h-4 text-accent-cyan" />
+                </div>
+                <h2 className="font-bold text-white text-lg">Nouvelle invitation</h2>
+              </div>
+              <button onClick={() => setInvModalOpen(false)} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-6 space-y-5">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Email du collaborateur *</label>
+                <input
+                  type="email"
+                  value={invEmail}
+                  onChange={e => setInvEmail(e.target.value)}
+                  className="w-full bg-obsidian-900 border border-card-border rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-primary-500/60"
+                  placeholder="collaborateur@email.com"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Rôle</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['admin', 'freelancer', 'viewer'] as UserRole[]).map(r => (
+                    <button
+                      key={r}
+                      onClick={() => {
+                        setInvRole(r);
+                        setInvPermissions(r === 'admin' ? SECTION_CONFIG.map(s => s.id) : r === 'freelancer' ? DEFAULT_FREELANCER_PERMISSIONS : ['dashboard']);
+                      }}
+                      className={clsx(
+                        'px-3 py-2 rounded-xl border text-xs font-semibold transition-all',
+                        invRole === r ? ROLE_CONFIG[r].className : 'border-card-border text-slate-400 hover:border-slate-500'
+                      )}
+                    >
+                      {ROLE_CONFIG[r].label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {workspaces.length > 0 && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Espace</label>
+                  <select
+                    value={invWorkspaceId}
+                    onChange={e => setInvWorkspaceId(e.target.value)}
+                    className="w-full bg-obsidian-900 border border-card-border rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-primary-500/60"
+                  >
+                    <option value="">— Aucun espace —</option>
+                    {workspaces.map(ws => <option key={ws.id} value={ws.id}>{ws.nom}</option>)}
+                  </select>
+                </div>
+              )}
+              {invRole !== 'admin' && (
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Permissions</label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {SECTION_CONFIG.map(section => {
+                      const Icon = section.icon;
+                      const checked = invPermissions.includes(section.id);
+                      return (
+                        <label key={section.id} className={clsx('flex items-center gap-2 px-2.5 py-2 rounded-lg border cursor-pointer transition-all text-xs', checked ? 'bg-primary-500/15 border-primary-500/40 text-primary-300' : 'bg-obsidian-900 border-card-border text-slate-400 hover:border-slate-500')}>
+                          <input type="checkbox" checked={checked} onChange={() => setInvPermissions(prev => prev.includes(section.id) ? prev.filter(p => p !== section.id) : [...prev, section.id])} className="hidden" />
+                          <Icon className="w-3 h-3 flex-shrink-0" />
+                          <span className="font-medium">{section.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              <div className="px-3 py-2.5 bg-primary-500/10 border border-primary-500/30 rounded-xl">
+                <p className="text-xs text-primary-300"><Globe className="w-3.5 h-3.5 inline mr-1.5" />Un lien unique sera généré. Il expire dans 7 jours.</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-card-border">
+              <button onClick={() => setInvModalOpen(false)} className="px-5 py-2.5 rounded-xl border border-card-border text-slate-400 hover:text-white text-sm font-medium transition-all">Annuler</button>
+              <button onClick={handleCreateInvitation} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white text-sm font-semibold transition-all">
+                <Send className="w-4 h-4" />
+                Créer l'invitation
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── CONFIRM Delete Workspace ──────────────────────────────────── */}
+      {deleteWsConfirm && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-obsidian-800 border border-card-border rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <AlertTriangle className="w-6 h-6 text-red-400 flex-shrink-0" />
+              <h3 className="font-bold text-white">Supprimer l'espace ?</h3>
+            </div>
+            <p className="text-slate-400 text-sm mb-6">L'espace et ses associations seront supprimés.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteWsConfirm(null)} className="flex-1 py-2.5 rounded-xl border border-card-border text-slate-400 hover:text-white text-sm font-medium transition-all">Annuler</button>
+              <button onClick={() => handleDeleteWs(deleteWsConfirm)} className="flex-1 py-2.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 text-sm font-semibold transition-all">Supprimer</button>
             </div>
           </div>
         </div>
