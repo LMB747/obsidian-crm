@@ -144,22 +144,49 @@ function buildActorInput(platform: ProspectSource, input: ScrapeInput): Record<s
   };
 }
 
-// ─── API Calls (appel direct à l'API Apify — CORS supporté) ────────────────
+// ─── API Calls ──────────────────────────────────────────────────────────────
+// Stratégie : Netlify Function proxy en priorité (prod),
+// fallback sur appel direct avec ?token= (dev local / si proxy indisponible)
 
+const PROXY_URL = '/.netlify/functions/apify-proxy';
 const APIFY_BASE = 'https://api.apify.com/v2';
 
-async function apifyFetch(
+// Encode l'actor ID pour les URLs (apify/google-search-scraper → apify~google-search-scraper)
+function encodeActorId(actor: string): string {
+  return actor.replace(/\//g, '~');
+}
+
+// Appel via le proxy Netlify (fonctionne en production Netlify)
+async function callProxy(body: Record<string, unknown>): Promise<{ ok: boolean; data: unknown; error?: string }> {
+  try {
+    const res = await fetch(PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return { ok: false, data: null, error: (data as Record<string, string>)?.error || `HTTP ${res.status}` };
+    }
+    const data = await res.json();
+    return { ok: true, data };
+  } catch {
+    return { ok: false, data: null, error: 'PROXY_UNAVAILABLE' };
+  }
+}
+
+// Appel direct à l'API Apify avec token en query param (évite les problèmes CORS du header Authorization)
+async function callDirect(
   url: string,
   apiKey: string,
   options: { method?: string; body?: string } = {}
 ): Promise<{ ok: boolean; data: unknown; error?: string }> {
+  const sep = url.includes('?') ? '&' : '?';
+  const fullUrl = `${url}${sep}token=${apiKey}`;
   try {
-    const res = await fetch(url, {
+    const res = await fetch(fullUrl, {
       method: options.method || 'GET',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
       body: options.body,
     });
     const data = await res.json();
@@ -176,24 +203,38 @@ async function apifyFetch(
   }
 }
 
+// Smart fetch : essaie le proxy, puis fallback sur appel direct
+async function apifyCall(
+  proxyBody: Record<string, unknown>,
+  directUrl: string,
+  apiKey: string,
+  directOptions: { method?: string; body?: string } = {}
+): Promise<{ ok: boolean; data: unknown; error?: string }> {
+  // 1) Tenter le proxy Netlify
+  const proxyResult = await callProxy(proxyBody);
+  if (proxyResult.error !== 'PROXY_UNAVAILABLE') return proxyResult;
+  // 2) Fallback direct si proxy indisponible
+  return callDirect(directUrl, apiKey, directOptions);
+}
+
 // Démarre un run Apify pour une plateforme donnée
 export async function startApifyRun(
   apiKey: string,
   platform: ProspectSource,
   input: ScrapeInput
 ): Promise<{ runId: string; error?: string }> {
-  // Priorité : actor ID personnalisé > mapping par plateforme
   const actor = _customActorId || PLATFORM_ACTORS[platform];
   if (!actor) {
     return { runId: '', error: `Plateforme "${platform}" non supportée via Apify` };
   }
 
   const actorInput = buildActorInput(platform, input);
-  const url = `${APIFY_BASE}/acts/${actor}/runs`;
-  const result = await apifyFetch(url, apiKey, {
-    method: 'POST',
-    body: JSON.stringify(actorInput),
-  });
+  const result = await apifyCall(
+    { action: 'start', apiKey, actor, input: actorInput },
+    `${APIFY_BASE}/acts/${encodeActorId(actor)}/runs`,
+    apiKey,
+    { method: 'POST', body: JSON.stringify(actorInput) }
+  );
 
   if (!result.ok || result.error) {
     return { runId: '', error: result.error || 'Impossible de démarrer le run Apify' };
@@ -212,8 +253,11 @@ export async function checkApifyRun(
   apiKey: string,
   runId: string
 ): Promise<{ status: 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'ABORTED' | 'TIMED-OUT'; error?: string }> {
-  const url = `${APIFY_BASE}/actor-runs/${runId}`;
-  const result = await apifyFetch(url, apiKey);
+  const result = await apifyCall(
+    { action: 'status', apiKey, runId },
+    `${APIFY_BASE}/actor-runs/${runId}`,
+    apiKey,
+  );
 
   if (!result.ok || result.error) {
     return { status: 'FAILED', error: result.error };
@@ -232,8 +276,11 @@ export async function getApifyResults(
   runId: string,
   platform: ProspectSource
 ): Promise<ProspectContact[]> {
-  const url = `${APIFY_BASE}/actor-runs/${runId}/dataset/items?limit=100&clean=true`;
-  const result = await apifyFetch(url, apiKey);
+  const result = await apifyCall(
+    { action: 'results', apiKey, runId },
+    `${APIFY_BASE}/actor-runs/${runId}/dataset/items?limit=100&clean=true`,
+    apiKey,
+  );
 
   if (!result.ok || !Array.isArray(result.data)) {
     return [];
