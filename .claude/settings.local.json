@@ -20,7 +20,9 @@
       "Bash(python scripts/office/unpack.py \"C:\\\\Users\\\\benig\\\\Desktop\\\\Obsidian\\\\Audit CRM\\\\audit-obsidian-crm.docx\" \"C:\\\\Users\\\\benig\\\\Desktop\\\\Obsidian\\\\Audit CRM\\\\unpacked\")",
       "Bash(pip install:*)",
       "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''''DEPS:'''', list\\(d.get\\(''''dependencies'''',{}\\).keys\\(\\)\\)\\); print\\(''''DEVDEPS:'''', list\\(d.get\\(''''devDependencies'''',{}\\).keys\\(\\)\\)\\)\")",
-      "Bash(python scripts/office/unpack.py \"C:\\\\Users\\\\benig\\\\Desktop\\\\Obsidian\\\\Audit CRM\\\\media-buying-spec.docx\" \"C:\\\\Users\\\\benig\\\\Desktop\\\\Obsidian\\\\Audit CRM\\\\mb-unpacked\")"
+      "Bash(python scripts/office/unpack.py \"C:\\\\Users\\\\benig\\\\Desktop\\\\Obsidian\\\\Audit CRM\\\\media-buying-spec.docx\" \"C:\\\\Users\\\\benig\\\\Desktop\\\\Obsidian\\\\Audit CRM\\\\mb-unpacked\")",
+      "Read(//c/Users/benig/Desktop/**)",
+      "Bash(python generate_scraper_guide.py)"
     ]
   }
 }
