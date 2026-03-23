@@ -64,6 +64,6 @@ export const useMediaBuyingStore = create<MediaBuyingStore>()(
           ),
         })),
     }),
-    { name: 'media-buying-store', version: 2 }
+    { name: 'media-buying-store-v3', version: 3 }
   )
 );

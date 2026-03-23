@@ -367,7 +367,7 @@ export const useProspectionStore = create<ProspectionStore>()(
       },
     }),
     {
-      name: 'prospection-store-v3',
+      name: 'prospection-store-v4',
       partialize: (state) => ({
         prospects: state.prospects,
         scrapeJobs: state.scrapeJobs,

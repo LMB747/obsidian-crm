@@ -342,6 +342,16 @@ export const useStore = create<CRMStore>()(
         }));
       },
 
+      deleteSnoozeSubscription: (id) => {
+        set((state) => ({ snoozeSubscriptions: state.snoozeSubscriptions.filter((s) => s.id !== id) }));
+        toast.warning('Abonnement supprimé');
+      },
+
+      clearAllSnoozeSubscriptions: () => {
+        set({ snoozeSubscriptions: [] });
+        toast.warning('Tous les abonnements supprimés');
+      },
+
       // ─── Settings Actions ──────────────────────────────────────────────────
       updateSettings: (updates) => {
         set((state) => ({ settings: { ...state.settings, ...updates } }));
@@ -572,8 +582,8 @@ export const useStore = create<CRMStore>()(
       },
     }),
     {
-      name: 'obsidian-crm-storage',
-      version: 4,
+      name: 'obsidian-crm-v5',
+      version: 5,
       migrate: (persistedState: any, version: number) => {
         // v1→v2 : migrate old SnoozePlan names + add missing fields
         if (version < 2 && persistedState?.snoozeSubscriptions) {

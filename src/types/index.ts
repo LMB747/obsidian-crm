@@ -283,6 +283,8 @@ export interface CRMStore {
   // Actions — Snooze
   addSnoozeSubscription: (sub: Omit<SnoozeSubscription, 'id'>) => void;
   updateSnoozeSubscription: (id: string, updates: Partial<SnoozeSubscription>) => void;
+  deleteSnoozeSubscription: (id: string) => void;
+  clearAllSnoozeSubscriptions: () => void;
 
   // Actions — Settings
   updateSettings: (updates: Partial<AgencySettings>) => void;

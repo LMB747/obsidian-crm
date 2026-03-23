@@ -169,7 +169,9 @@ const MiniChart: React.FC<{ data: { label: string; mrr: number; commissions: num
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export const PayToSnooze: React.FC = () => {
-  const { snoozeSubscriptions, addSnoozeSubscription, updateSnoozeSubscription, settings } = useStore();
+  const { snoozeSubscriptions, addSnoozeSubscription, updateSnoozeSubscription, deleteSnoozeSubscription, clearAllSnoozeSubscriptions, settings } = useStore();
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
 
   // ── UI State ───────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'abonnements' | 'commissions' | 'analytiques' | 'revenuecat'>('abonnements');
@@ -436,6 +438,32 @@ export const PayToSnooze: React.FC = () => {
   return (
     <div className="space-y-5 pb-6">
 
+      {/* ── Modales de confirmation suppression ────────────────────────────── */}
+      {confirmDeleteId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-obsidian-800 border border-card-border rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+            <h3 className="text-white font-bold mb-2">Supprimer cet abonnement ?</h3>
+            <p className="text-slate-400 text-sm mb-5">Cette action est irréversible. Les données de cet abonné seront définitivement supprimées.</p>
+            <div className="flex gap-3">
+              <button onClick={() => { deleteSnoozeSubscription(confirmDeleteId); setConfirmDeleteId(null); if (selectedSub?.id === confirmDeleteId) setSelectedSub(null); }} className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-400 text-white text-sm font-semibold transition-all">Supprimer</button>
+              <button onClick={() => setConfirmDeleteId(null)} className="flex-1 py-2.5 rounded-xl bg-card border border-card-border text-slate-300 text-sm font-medium hover:text-white transition-all">Annuler</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {confirmClearAll && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-obsidian-800 border border-card-border rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+            <h3 className="text-white font-bold mb-2">Vider tous les abonnements ?</h3>
+            <p className="text-slate-400 text-sm mb-5">Tous les <strong className="text-white">{snoozeSubscriptions.length} abonnements</strong> seront définitivement supprimés. Action irréversible.</p>
+            <div className="flex gap-3">
+              <button onClick={() => { clearAllSnoozeSubscriptions(); setConfirmClearAll(false); setSelectedSub(null); }} className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-400 text-white text-sm font-semibold transition-all">Tout supprimer</button>
+              <button onClick={() => setConfirmClearAll(false)} className="flex-1 py-2.5 rounded-xl bg-card border border-card-border text-slate-300 text-sm font-medium hover:text-white transition-all">Annuler</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ══ HEADER ══════════════════════════════════════════════════════════ */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -456,6 +484,15 @@ export const PayToSnooze: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {snoozeSubscriptions.length > 0 && (
+            <button
+              onClick={() => setConfirmClearAll(true)}
+              className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-400 text-sm font-medium px-3 py-2.5 rounded-xl hover:bg-red-500/20 transition-all"
+            >
+              <Trash2 className="w-4 h-4" />
+              Tout vider
+            </button>
+          )}
           <button
             onClick={handleExportCsv}
             className="flex items-center gap-2 bg-card border border-card-border text-slate-300 text-sm font-medium px-3 py-2.5 rounded-xl hover:bg-obsidian-600 hover:text-white transition-all"
@@ -800,6 +837,13 @@ export const PayToSnooze: React.FC = () => {
                               title={sub.statut === 'actif' ? 'Annuler' : 'Réactiver'}
                             >
                               {sub.statut === 'actif' ? <X className="w-3 h-3" /> : <Check className="w-3 h-3" />}
+                            </button>
+                            <button
+                              onClick={() => setConfirmDeleteId(sub.id)}
+                              className="w-7 h-7 rounded-lg bg-red-500/10 border border-red-500/25 flex items-center justify-center text-red-400 hover:bg-red-500/25 transition-colors"
+                              title="Supprimer définitivement"
+                            >
+                              <Trash2 className="w-3 h-3" />
                             </button>
                           </div>
                         </td>
