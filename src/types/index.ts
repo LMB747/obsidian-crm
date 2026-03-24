@@ -127,6 +127,7 @@ export interface Task {
   heuresReelles: number;
   tags: string[];
   notes: TaskNote[];
+  dependsOn?: string[];         // IDs des tâches pré-requises
   subCategoryId?: string;      // lien vers une sous-catégorie du projet
 }
 

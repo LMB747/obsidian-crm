@@ -7,6 +7,7 @@ import clsx from 'clsx';
 import { useStore } from '../store/useStore';
 import { Freelancer, FreelancerSpecialite, FreelancerStatut } from '../types';
 import { StatCard } from '../components/ui/StatCard';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Modal } from '../components/ui/Modal';
 import { exportFreelancersCSV } from '../utils/csvExport';
 import { useDebounce } from '../hooks/useDebounce';
@@ -514,13 +515,13 @@ export const Freelancers: React.FC = () => {
                   {detailFreelancer.iban && (
                     <div>
                       <p className="text-slate-500 text-xs">IBAN</p>
-                      <p className="text-white text-sm font-mono">{formatIBAN(detailFreelancer.iban)}</p>
+                      <p className="text-white text-sm font-mono">{'•••• •••• •••• ' + detailFreelancer.iban.slice(-4)}</p>
                     </div>
                   )}
                   {detailFreelancer.bic && (
                     <div>
                       <p className="text-slate-500 text-xs">BIC / SWIFT</p>
-                      <p className="text-white text-sm font-mono">{detailFreelancer.bic}</p>
+                      <p className="text-white text-sm font-mono">{'••••' + detailFreelancer.bic.slice(-4)}</p>
                     </div>
                   )}
                 </div>
@@ -894,33 +895,17 @@ export const Freelancers: React.FC = () => {
         </form>
       </Modal>
 
-      {/* ── Confirm Delete Modal ─────────────────────────────────────────────── */}
-      {confirmDeleteId && (
-        <Modal
-          isOpen={true}
-          onClose={() => setConfirmDeleteId(null)}
-          title="Supprimer ce prestataire ?"
-          size="sm"
-        >
-          <p className="text-slate-400 text-sm mb-5">
-            Cette action est irréversible. Toutes les données associées à ce prestataire seront supprimées.
-          </p>
-          <div className="flex gap-3">
-            <button
-              onClick={() => setConfirmDeleteId(null)}
-              className="flex-1 py-2.5 rounded-xl border border-card-border text-slate-400 text-sm font-medium hover:bg-card-hover hover:text-white transition-all"
-            >
-              Annuler
-            </button>
-            <button
-              onClick={() => handleDelete(confirmDeleteId)}
-              className="flex-1 py-2.5 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 text-sm font-semibold hover:bg-red-500/30 transition-all"
-            >
-              Supprimer
-            </button>
-          </div>
-        </Modal>
-      )}
+      {/* ── Confirm Delete ─────────────────────────────────────────────── */}
+      <ConfirmDialog
+        isOpen={!!confirmDeleteId}
+        onCancel={() => setConfirmDeleteId(null)}
+        onConfirm={() => { if (confirmDeleteId) handleDelete(confirmDeleteId); }}
+        title="Supprimer le prestataire ?"
+        message="Cette action est irréversible. Toutes les données associées seront perdues."
+        confirmLabel="Supprimer"
+        cancelLabel="Annuler"
+        variant="danger"
+      />
     </div>
   );
 };

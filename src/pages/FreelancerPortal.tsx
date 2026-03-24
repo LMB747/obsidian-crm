@@ -1,9 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Target, CheckCircle2, Clock, PlayCircle,
   AlertCircle, Calendar, TrendingUp, Briefcase,
   ChevronRight, ListTodo, MessageSquare, Send, ChevronDown, ChevronUp, X,
-  Crosshair, FileText, Euro, Timer, Link
+  Crosshair, FileText, Euro, Timer, Link, Play, Pause
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useStore } from '../store/useStore';
@@ -40,10 +40,59 @@ interface TaskCardProps {
   currentUserName: string;
 }
 
+const formatElapsed = (seconds: number): string => {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+};
+
 const TaskCard: React.FC<TaskCardProps> = ({ task, project, onStatusChange, onAddNote }) => {
+  const { addTimerSession, timerSessions } = useStore();
   const [showNotes, setShowNotes] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Timer state
+  const [timerStart, setTimerStart] = useState<number | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!timerStart) return;
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - timerStart) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [timerStart]);
+
+  const isTimerActive = timerStart !== null;
+
+  const toggleTimer = () => {
+    if (isTimerActive) {
+      // Stop timer and log session
+      const durationMinutes = Math.round(elapsed / 60);
+      if (durationMinutes > 0) {
+        addTimerSession({
+          projectId: project.id,
+          projectNom: project.nom,
+          taskId: task.id,
+          taskTitre: task.titre,
+          dureeMinutes: durationMinutes,
+          date: new Date().toISOString(),
+        });
+      }
+      setTimerStart(null);
+      setElapsed(0);
+    } else {
+      setTimerStart(Date.now());
+      setElapsed(0);
+    }
+  };
+
+  const totalMinutes = useMemo(() => {
+    return timerSessions
+      .filter(s => s.taskId === task.id)
+      .reduce((sum, s) => sum + s.dureeMinutes, 0);
+  }, [timerSessions, task.id]);
 
   const priorityCfg = PRIORITY_CONFIG[task.priorite];
   const statusCfg   = STATUS_CONFIG[task.statut];
@@ -216,6 +265,15 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, project, onStatusChange, onAd
             Ajouter une note d'avancement
           </button>
         )}
+      </div>
+
+      {/* Timer row */}
+      <div className="flex items-center gap-2 mt-2 pt-2 border-t border-card-border">
+        <button onClick={toggleTimer} className="p-1.5 rounded-lg bg-obsidian-700 border border-card-border text-slate-400 hover:text-white hover:border-primary-500/30 transition-all">
+          {isTimerActive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+        </button>
+        {isTimerActive && <span className="text-xs text-primary-300 font-mono">{formatElapsed(elapsed)}</span>}
+        {!isTimerActive && totalMinutes > 0 && <span className="text-xs text-slate-500">{totalMinutes}min logguées</span>}
       </div>
     </div>
   );

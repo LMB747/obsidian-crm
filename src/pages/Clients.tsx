@@ -11,6 +11,7 @@ import { Client, ClientStatus, SecteurActivite, TypePresence } from '../types';
 import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { StatCard } from '../components/ui/StatCard';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { exportClientsCsv, parseCsv, mapCsvToClients } from '../utils/csvExport';
 import { useDebounce } from '../hooks/useDebounce';
 import { TagPicker } from '../components/ui/TagPicker';
@@ -718,19 +719,16 @@ export const Clients: React.FC = () => {
       </Modal>
 
       {/* ── Confirm Delete ───────────────────────────────────────────────── */}
-      {confirmDelete && (
-        <Modal isOpen={true} onClose={() => setConfirmDelete(null)} title="Supprimer ce client ?" size="sm">
-          <p className="text-slate-400 text-sm mb-5">Cette action est irréversible. Toutes les données associées seront supprimées.</p>
-          <div className="flex gap-3">
-            <button onClick={() => setConfirmDelete(null)} className="flex-1 py-2.5 rounded-xl border border-card-border text-slate-400 text-sm font-medium hover:bg-card-hover hover:text-white transition-all">
-              Annuler
-            </button>
-            <button onClick={() => handleDelete(confirmDelete)} className="flex-1 py-2.5 rounded-xl bg-accent-red/20 border border-accent-red/30 text-red-400 text-sm font-semibold hover:bg-accent-red/30 transition-all">
-              Supprimer
-            </button>
-          </div>
-        </Modal>
-      )}
+      <ConfirmDialog
+        isOpen={!!confirmDelete}
+        onCancel={() => setConfirmDelete(null)}
+        onConfirm={() => { if (confirmDelete) handleDelete(confirmDelete); }}
+        title="Supprimer le client ?"
+        message="Cette action est irréversible. Toutes les données associées seront perdues."
+        confirmLabel="Supprimer"
+        cancelLabel="Annuler"
+        variant="danger"
+      />
     </div>
   );
 };

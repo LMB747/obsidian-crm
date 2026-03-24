@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Zap, Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import clsx from 'clsx';
+import { toast } from '../ui/Toast';
 
 interface LoginScreenProps {
   onLogin: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
@@ -13,9 +14,38 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onFirstSetup 
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [loginAttempts, setLoginAttempts] = useState(0);
+  const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
+  const [lockoutRemaining, setLockoutRemaining] = useState(0);
+
+  // Countdown timer for lockout display
+  useEffect(() => {
+    if (!lockoutUntil) { setLockoutRemaining(0); return; }
+    const tick = () => {
+      const remaining = Math.ceil((lockoutUntil - Date.now()) / 1000);
+      if (remaining <= 0) {
+        setLockoutRemaining(0);
+        setLockoutUntil(null);
+        setLoginAttempts(0);
+      } else {
+        setLockoutRemaining(remaining);
+      }
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [lockoutUntil]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Check lockout
+    if (lockoutUntil && Date.now() < lockoutUntil) {
+      const remaining = Math.ceil((lockoutUntil - Date.now()) / 1000);
+      toast.error(`Trop de tentatives. Réessayez dans ${remaining}s`);
+      return;
+    }
+
     if (!email.trim() || !password.trim()) {
       setError('Veuillez remplir tous les champs.');
       return;
@@ -29,6 +59,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onFirstSetup 
     const result = await onLogin(email.trim(), password);
     if (!result.success) {
       setError(result.error ?? 'Erreur de connexion.');
+      setLoginAttempts(prev => {
+        const next = prev + 1;
+        if (next >= 5) {
+          setLockoutUntil(Date.now() + 60000);
+          toast.error('Compte verrouillé pour 60 secondes');
+        }
+        return next;
+      });
+    } else {
+      setLoginAttempts(0);
+      setLockoutUntil(null);
     }
     setIsLoading(false);
   };
@@ -136,7 +177,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onFirstSetup 
               {/* Submit */}
               <button
                 type="submit"
-                disabled={isLoading}
+                disabled={isLoading || lockoutRemaining > 0}
                 className={clsx(
                   'w-full py-3 rounded-xl font-semibold text-sm text-white transition-all duration-200',
                   'bg-gradient-to-r from-primary-600 to-purple-600',
@@ -145,7 +186,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onFirstSetup 
                   'focus:outline-none focus:ring-2 focus:ring-primary-500/50'
                 )}
               >
-                {isLoading ? (
+                {lockoutRemaining > 0 ? (
+                  `Verrouillé (${lockoutRemaining}s)`
+                ) : isLoading ? (
                   <span className="flex items-center justify-center gap-2">
                     <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />

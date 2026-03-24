@@ -7,7 +7,7 @@ import {
   List, Columns, AlertTriangle, Download, Search, X,
   Activity, MessageSquare, FolderPlus, ArrowRight, Flag, FileText,
   Crosshair, Layers, Tag, Package, Wallet, GanttChart,
-  Link, ExternalLink, Pen, HardDrive, Github, Columns3, Video
+  Link, ExternalLink, Pen, HardDrive, Github, Columns3, Video, TrendingUp
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { Project, ProjectStatus, Task, Freelancer, Objective, ProjectSubCategory, Livrable, LivrableType, LivrableStatut, DepenseProjet, LienAvancementType } from '../types';
@@ -15,6 +15,7 @@ import { Badge } from '../components/ui/Badge';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { Modal } from '../components/ui/Modal';
 import { StatCard } from '../components/ui/StatCard';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { exportProjectsCSV } from '../utils/csvExport';
 import { useDebounce } from '../hooks/useDebounce';
 import { TagPicker } from '../components/ui/TagPicker';
@@ -152,13 +153,14 @@ const ProjectTeam: React.FC<{
   // Tâches par freelancer (match par ID puis fallback par nom)
   const taskCountByFreelancer = (freelancerId: string) => {
     const f = allFreelancers.find(fl => fl.id === freelancerId);
-    if (!f) return { total: 0, done: 0 };
+    if (!f) return { total: 0, done: 0, heuresEstimees: 0 };
     const fullName = `${f.prenom} ${f.nom}`.toLowerCase();
     const tasks = (project.taches || []).filter(t =>
       (t.assigneAIds || []).includes(freelancerId) ||
       t.assigneA.toLowerCase() === fullName
     );
-    return { total: tasks.length, done: tasks.filter(t => t.statut === 'fait').length };
+    const heuresEstimees = tasks.reduce((sum, t) => sum + (t.heuresEstimees || 0), 0);
+    return { total: tasks.length, done: tasks.filter(t => t.statut === 'fait').length, heuresEstimees };
   };
 
   return (
@@ -181,6 +183,8 @@ const ProjectTeam: React.FC<{
               const counts = taskCountByFreelancer(f.id);
               const progress = counts.total > 0 ? Math.round((counts.done / counts.total) * 100) : 0;
               const estimatedCost = projectDays > 0 ? f.tjm * projectDays : 0;
+              const assignedHours = counts.heuresEstimees;
+              const taskBasedCost = f.tjm > 0 && assignedHours > 0 ? f.tjm * assignedHours / 8 : 0;
               return (
                 <div key={f.id} className="flex items-center gap-3 p-3 bg-card border border-card-border rounded-xl hover:border-primary-500/30 transition-all">
                   <div className="w-9 h-9 rounded-xl bg-primary-500/20 flex items-center justify-center flex-shrink-0">
@@ -194,7 +198,12 @@ const ProjectTeam: React.FC<{
                     </div>
                     <div className="flex items-center gap-3 mt-1">
                       <span className="text-xs text-slate-500">{counts.total} tâche{counts.total > 1 ? 's' : ''} · {counts.done} terminée{counts.done > 1 ? 's' : ''}</span>
-                      {estimatedCost > 0 && (
+                      {taskBasedCost > 0 && (
+                        <span className="text-xs text-slate-400">
+                          {f.tjm}€/j × {(assignedHours / 8).toFixed(1)}j = {taskBasedCost.toFixed(0)}€
+                        </span>
+                      )}
+                      {taskBasedCost === 0 && estimatedCost > 0 && (
                         <span className="text-xs text-emerald-400">~{estimatedCost.toLocaleString('fr-FR')}€ estimé</span>
                       )}
                     </div>
@@ -447,11 +456,12 @@ export const Projects: React.FC = () => {
     <div className="space-y-6">
 
       {/* ── Stats ───────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard title="Total Projets" value={stats.total} icon={FolderKanban} color="purple" />
         <StatCard title="En Cours" value={stats.enCours} icon={BarChart3} color="cyan" />
         <StatCard title="Terminés" value={stats.termines} icon={CheckSquare} color="green" />
         <StatCard title="Budget Total" value={`${(stats.budgetTotal / 1000).toFixed(0)}k€`} icon={Euro} color="orange" subtitle={`Dépenses: ${(stats.depensesTotal / 1000).toFixed(0)}k€`} />
+        <StatCard title="Marge nette" value={`${(stats.budgetTotal - stats.depensesTotal).toLocaleString('fr-FR')} €`} icon={TrendingUp} color="green" />
       </div>
 
       {/* ── Alerte projets en retard ─────────────────────────────────────── */}
@@ -1503,32 +1513,17 @@ export const Projects: React.FC = () => {
         </div>
       </Modal>
 
-      {/* ── Confirm Delete Modal ─────────────────────────────────────────── */}
-      <Modal isOpen={!!confirmDelete} onClose={() => setConfirmDelete(null)} title="Confirmer la suppression" size="sm">
-        <div className="space-y-4">
-          <p className="text-slate-300 text-sm">
-            Êtes-vous sûr de vouloir supprimer le projet{' '}
-            <span className="font-semibold text-white">
-              {projects.find(p => p.id === confirmDelete)?.nom}
-            </span>{' '}
-            ? Cette action est irréversible.
-          </p>
-          <div className="flex gap-3 pt-1">
-            <button
-              onClick={() => setConfirmDelete(null)}
-              className="flex-1 py-2.5 rounded-xl border border-card-border text-slate-400 text-sm font-medium hover:bg-card-hover hover:text-white transition-all"
-            >
-              Annuler
-            </button>
-            <button
-              onClick={() => confirmDelete && handleDeleteProject(confirmDelete)}
-              className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-semibold transition-colors"
-            >
-              Supprimer
-            </button>
-          </div>
-        </div>
-      </Modal>
+      {/* ── Confirm Delete ─────────────────────────────────────────── */}
+      <ConfirmDialog
+        isOpen={!!confirmDelete}
+        onCancel={() => setConfirmDelete(null)}
+        onConfirm={() => { if (confirmDelete) handleDeleteProject(confirmDelete); }}
+        title="Supprimer le projet ?"
+        message="Cette action est irréversible. Toutes les données associées seront perdues."
+        confirmLabel="Supprimer"
+        cancelLabel="Annuler"
+        variant="danger"
+      />
 
       {/* ── Edit Project Modal ───────────────────────────────────────────── */}
       <Modal isOpen={isEditModalOpen} onClose={() => { setIsEditModalOpen(false); setEditProjectId(null); }} title="Modifier le Projet" size="lg">

@@ -45,13 +45,13 @@ const defaultSettings: AgencySettings = {
 export const useStore = create<CRMStore>()(
   persist(
     (set, get) => ({
-      // ─── Initial Data ──────────────────────────────────────────────────────
-      clients: mockClients,
-      freelancers: mockFreelancers,
-      projects: mockProjects,
-      invoices: mockInvoices,
-      snoozeSubscriptions: mockSnoozeSubscriptions,
-      activities: mockActivities,
+      // ─── Initial Data (mocks en dev uniquement) ───────────────────────────
+      clients: import.meta.env.DEV ? mockClients : [],
+      freelancers: import.meta.env.DEV ? mockFreelancers : [],
+      projects: import.meta.env.DEV ? mockProjects : [],
+      invoices: import.meta.env.DEV ? mockInvoices : [],
+      snoozeSubscriptions: import.meta.env.DEV ? mockSnoozeSubscriptions : [],
+      activities: import.meta.env.DEV ? mockActivities : [],
       timerSessions: [],
       workspaces: [],
       invitations: [],
@@ -1082,8 +1082,8 @@ export const useStore = create<CRMStore>()(
       },
     }),
     {
-      name: 'obsidian-crm-v5',
-      version: 5,
+      name: 'obsidian-crm-v6',
+      version: 6,
       migrate: (persistedState: any, version: number) => {
         // v1→v2 : migrate old SnoozePlan names + add missing fields
         if (version < 2 && persistedState?.snoozeSubscriptions) {
@@ -1102,6 +1102,24 @@ export const useStore = create<CRMStore>()(
             revenueCatId: s.revenueCatId ?? undefined,
             plateforme: s.plateforme ?? 'web',
           }));
+        }
+        // v5→v6 : add secteurActivite, typePresence, liensAvancement defaults
+        if (version < 6) {
+          if (persistedState?.clients) {
+            persistedState.clients = persistedState.clients.map((c: any) => ({
+              ...c,
+              secteurActivite: c.secteurActivite ?? undefined,
+              typePresence: c.typePresence ?? undefined,
+              localisation: c.localisation ?? undefined,
+              siteWeb: c.siteWeb ?? undefined,
+            }));
+          }
+          if (persistedState?.projects) {
+            persistedState.projects = persistedState.projects.map((p: any) => ({
+              ...p,
+              liensAvancement: p.liensAvancement ?? [],
+            }));
+          }
         }
         return persistedState;
       },
