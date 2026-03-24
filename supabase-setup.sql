@@ -1,0 +1,84 @@
+-- ============================================================
+-- OBSIDIAN CRM — Supabase Setup
+-- Exécuter dans Supabase Dashboard → SQL Editor
+-- ============================================================
+
+-- 1. Table profiles (liée à auth.users)
+CREATE TABLE IF NOT EXISTS profiles (
+  id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  nom TEXT DEFAULT '',
+  prenom TEXT DEFAULT '',
+  role TEXT DEFAULT 'viewer' CHECK (role IN ('admin', 'freelancer', 'viewer')),
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  last_login TIMESTAMPTZ
+);
+
+-- 2. Auto-create profile on signup
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, email, nom, prenom, role)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'nom', ''),
+    COALESCE(NEW.raw_user_meta_data->>'prenom', ''),
+    COALESCE(NEW.raw_user_meta_data->>'role', 'viewer')
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger on auth.users insert
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- 3. RLS policies
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+
+-- Admins can see all profiles
+CREATE POLICY "Admins can view all profiles" ON profiles
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  );
+
+-- Users can view their own profile
+CREATE POLICY "Users can view own profile" ON profiles
+  FOR SELECT USING (id = auth.uid());
+
+-- Admins can update any profile
+CREATE POLICY "Admins can update profiles" ON profiles
+  FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  );
+
+-- Users can update their own profile
+CREATE POLICY "Users can update own profile" ON profiles
+  FOR UPDATE USING (id = auth.uid());
+
+-- Admins can insert profiles
+CREATE POLICY "Admins can insert profiles" ON profiles
+  FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  );
+
+-- 4. Create the first admin user
+-- ⚠️ REMPLACER email et password par vos identifiants
+-- Exécutez ceci APRÈS avoir créé le user via l'interface Supabase Auth
+-- ou via le formulaire de setup du CRM (#setup)
+
+-- ============================================================
+-- INSTRUCTIONS :
+-- 1. Allez dans Supabase → Authentication → Users → Add User
+-- 2. Email: votre-email@domaine.com, Password: votre-mot-de-passe
+-- 3. Le trigger créera automatiquement le profil
+-- 4. Mettez à jour le rôle en admin :
+--    UPDATE profiles SET role = 'admin' WHERE email = 'votre-email@domaine.com';
+-- 5. Dans Vercel, ajoutez les env vars :
+--    VITE_SUPABASE_URL = https://xxxx.supabase.co
+--    VITE_SUPABASE_KEY = eyJhb...
+-- ============================================================

@@ -5,6 +5,7 @@ import { LoginScreen } from './components/Auth/LoginScreen';
 import { FirstRunSetup } from './components/Auth/FirstRunSetup';
 import { PageSkeleton } from './components/ui/Skeleton';
 import { loginAPI, getSession, clearSession, type SessionUser } from './lib/authService';
+import { signIn, signOut, getCurrentUser, onAuthStateChange, isSupabaseConfigured, type UserProfile } from './lib/supabaseAuth';
 
 const Dashboard       = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const Clients         = lazy(() => import('./pages/Clients').then(m => ({ default: m.Clients })));
@@ -44,37 +45,61 @@ const pageMap: Record<string, React.ComponentType> = {
 const App: React.FC = () => {
   const { activeSection, currentUser, login, setupComplete, completeSetup } = useStore();
   const setActiveSection = useStore((s) => s.setActiveSection);
-  // sessionUser = API-based auth, currentUser = legacy store-based auth
-
-  // ── Session: API-based auth with localStorage fallback ─────────────────────
+  // ── Auth: Supabase → API fallback → Local store ────────────────────────────
+  const [supabaseUser, setSupabaseUser] = useState<UserProfile | null>(null);
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(() => getSession());
-  const [authReady, setAuthReady] = useState(true);
+  const [authLoading, setAuthLoading] = useState(isSupabaseConfigured());
 
-  // Combined auth: either API session OR store-based currentUser
-  const isLoggedIn = !!sessionUser || !!currentUser;
+  // Check Supabase session on mount
+  useEffect(() => {
+    if (!isSupabaseConfigured()) { setAuthLoading(false); return; }
+    getCurrentUser().then(user => {
+      setSupabaseUser(user);
+      setAuthLoading(false);
+    });
+    const { unsubscribe } = onAuthStateChange((authUser) => {
+      if (!authUser) { setSupabaseUser(null); return; }
+      getCurrentUser().then(setSupabaseUser);
+    });
+    return () => unsubscribe();
+  }, []);
 
-  // Unified login handler: tries API first, then falls back to store-based auth
+  // Combined auth: Supabase OR API session OR store-based currentUser
+  const isLoggedIn = !!supabaseUser || !!sessionUser || !!currentUser;
+
+  // Unified login: Supabase → API → Local store
   const handleLogin = useCallback(async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
-    // Try API-based login first (works on Vercel)
+    // 1. Try Supabase auth (real database)
+    if (isSupabaseConfigured()) {
+      const result = await signIn(email, password);
+      if (result.success && result.user) {
+        setSupabaseUser(result.user);
+        return { success: true };
+      }
+      // If Supabase is configured but login failed, return the error (don't fallback)
+      return { success: false, error: result.error };
+    }
+
+    // 2. Try API-based login (Vercel env vars)
     const apiResult = await loginAPI(email, password);
     if (apiResult.success && apiResult.user) {
       setSessionUser(apiResult.user);
       return { success: true };
     }
 
-    // Fallback: try local store-based login (works in dev)
+    // 3. Fallback: local store (dev only)
     const storeResult = await login(email, password);
-    if (storeResult.success) {
-      return { success: true };
-    }
+    if (storeResult.success) return { success: true };
 
     return { success: false, error: apiResult.error || storeResult.error || 'Identifiants incorrects.' };
   }, [login]);
 
-  // Logout clears both API session and store
-  const handleLogout = useCallback(() => {
+  // Logout clears everything
+  const handleLogout = useCallback(async () => {
+    if (isSupabaseConfigured()) await signOut();
     clearSession();
     setSessionUser(null);
+    setSupabaseUser(null);
     useStore.getState().logout();
   }, []);
 
@@ -100,6 +125,11 @@ const App: React.FC = () => {
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, [setActiveSection]);
+
+  // Attendre que l'auth soit prête
+  if (authLoading) {
+    return <PageSkeleton />;
+  }
 
   // Setup uniquement via URL #setup
   const [showSetup, setShowSetup] = useState(() => window.location.hash === '#setup');
