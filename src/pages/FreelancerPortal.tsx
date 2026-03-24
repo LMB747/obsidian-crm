@@ -294,7 +294,29 @@ export const FreelancerPortal: React.FC = () => {
   const fullName = `${currentUser.prenom || ''} ${currentUser.nom || ''}`.trim();
 
   // Find all tasks assigned to this user (par ID, par nom, ou par projet)
-  const myIds = [currentUser.id, currentUser.freelancerId].filter(Boolean) as string[];
+  // Collecter TOUS les IDs possibles : userId, freelancerId, et l'ID du prestataire trouvé par email/nom
+  const matchedFreelancer = useMemo(() => {
+    // D'abord par freelancerId direct
+    if (currentUser.freelancerId) {
+      const f = freelancers.find(fl => fl.id === currentUser.freelancerId);
+      if (f) return f;
+    }
+    // Ensuite par email
+    if (currentUser.email) {
+      const f = freelancers.find(fl => fl.email === currentUser.email);
+      if (f) return f;
+    }
+    // Enfin par nom
+    const f = freelancers.find(fl =>
+      `${fl.prenom} ${fl.nom}`.toLowerCase().trim() === fullName.toLowerCase().trim()
+    );
+    return f || null;
+  }, [currentUser, freelancers, fullName]);
+
+  const myIds = useMemo(() => {
+    const ids = [currentUser.id, currentUser.freelancerId, matchedFreelancer?.id].filter(Boolean) as string[];
+    return [...new Set(ids)];
+  }, [currentUser.id, currentUser.freelancerId, matchedFreelancer?.id]);
 
   const assignedTasks = useMemo(() => {
     const result: { task: Task; project: Project }[] = [];
@@ -354,10 +376,7 @@ export const FreelancerPortal: React.FC = () => {
   }, [assignedTasks]);
 
   // Earnings estimate
-  const freelancerProfile = useMemo(() => {
-    if (!currentUser?.freelancerId) return null;
-    return freelancers.find(f => f.id === currentUser.freelancerId) || null;
-  }, [currentUser, freelancers]);
+  const freelancerProfile = matchedFreelancer;
 
   const earnings = useMemo(() => {
     if (!freelancerProfile) return 0;
