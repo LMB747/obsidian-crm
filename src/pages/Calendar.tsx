@@ -170,7 +170,7 @@ export const Calendar: React.FC = () => {
         {(Object.entries(TYPE_CONFIG) as [EventType, typeof TYPE_CONFIG[EventType]][]).map(([type, cfg]) => (
           <span key={type} className="flex items-center gap-1.5 text-slate-400">
             <span className={`w-2.5 h-2.5 rounded-full ${cfg.dot}`} />
-            {type === 'project' ? 'Projet' : type === 'invoice' ? 'Facture' : type === 'task' ? 'Tâche' : 'Livrable'}
+            {type === 'project' ? 'Projet' : type === 'invoice' ? 'Facture' : type === 'task' ? 'Tâche' : type === 'personal' ? 'Perso' : 'Livrable'}
           </span>
         ))}
       </div>
