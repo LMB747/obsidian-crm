@@ -41,6 +41,7 @@ export interface UserProfile {
   nom: string;
   prenom: string;
   role: 'admin' | 'freelancer' | 'viewer';
+  permissions?: string[];
   is_active: boolean;
   created_at: string;
   last_login?: string;

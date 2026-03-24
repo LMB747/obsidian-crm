@@ -24,6 +24,7 @@ module.exports = async function handler(req, res) {
   var nom = (req.body?.nom || '').trim();
   var prenom = (req.body?.prenom || '').trim();
   var role = (req.body?.role || 'viewer').trim();
+  var customPermissions = req.body?.permissions || null;
 
   // Input validation
   if (!email || !password) {
@@ -75,8 +76,10 @@ module.exports = async function handler(req, res) {
 
     var userId = result.data.user.id;
 
-    // Insert/update profile with default permissions
-    var permissions = DEFAULT_PERMISSIONS[role] || DEFAULT_PERMISSIONS.viewer;
+    // Insert/update profile with custom or default permissions
+    var permissions = (Array.isArray(customPermissions) && customPermissions.length > 0)
+      ? customPermissions
+      : (DEFAULT_PERMISSIONS[role] || DEFAULT_PERMISSIONS.viewer);
     var profileResult = await supabase.from('profiles').upsert({
       id: userId,
       email: email,

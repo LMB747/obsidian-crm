@@ -44,8 +44,8 @@ const pageMap: Record<string, React.ComponentType> = {
 };
 
 // ─── Helper: sync user into Zustand store ──────────────────────────────────
-function syncToStore(email: string, nom: string, role: string) {
-  useStore.getState().syncSessionUser({ email, role, nom, prenom: '' });
+function syncToStore(email: string, nom: string, role: string, permissions?: string[]) {
+  useStore.getState().syncSessionUser({ email, role, nom, prenom: '', permissions });
 }
 
 // ─── App ────────────────────────────────────────────────────────────────────
@@ -61,7 +61,7 @@ const App: React.FC = () => {
       if (isSupabaseConfigured()) {
         const user = await getCurrentUser();
         if (user) {
-          syncToStore(user.email, `${user.prenom} ${user.nom}`.trim(), user.role);
+          syncToStore(user.email, `${user.prenom} ${user.nom}`.trim(), user.role, user.permissions);
           setReady(true);
           return;
         }
@@ -81,7 +81,7 @@ const App: React.FC = () => {
     if (isSupabaseConfigured()) {
       const result = await signIn(email, password);
       if (result.success && result.user) {
-        syncToStore(result.user.email, `${result.user.prenom} ${result.user.nom}`.trim(), result.user.role);
+        syncToStore(result.user.email, `${result.user.prenom} ${result.user.nom}`.trim(), result.user.role, result.user.permissions);
         useStore.getState()._audit('login', undefined, `Connexion Supabase — ${result.user.email}`);
         return { success: true };
       }

@@ -418,6 +418,13 @@ export const Admin: React.FC = () => {
   const handleSaveUser = async (data: Omit<UserAccount, 'id' | 'dateCreation'>, rawPassword?: string) => {
     if (editUser?.id) {
       updateUser(editUser.id, data);
+      // Sync permissions to Supabase profile (fire & forget)
+      import('../lib/supabaseAuth').then(({ getSupabase }) => {
+        const sb = getSupabase();
+        if (sb && editUser.email) {
+          sb.from('profiles').update({ permissions: data.permissions, role: data.role }).eq('email', editUser.email).then(() => {});
+        }
+      }).catch(() => {});
       toast.success('Utilisateur modifié');
       setModalOpen(false);
       return;
@@ -438,6 +445,7 @@ export const Admin: React.FC = () => {
             nom: data.nom,
             prenom: data.prenom,
             role: data.role,
+            permissions: data.permissions,
           }),
         });
         const result = await res.json();

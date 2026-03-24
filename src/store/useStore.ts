@@ -707,19 +707,35 @@ export const useStore = create<CRMStore>()(
       },
 
       // Sync API session user into Zustand currentUser
-      syncSessionUser: ({ email, role, nom, prenom }: { email: string; role: string; nom: string; prenom: string }) => {
+      syncSessionUser: ({ email, role, nom, prenom, permissions: supabasePermissions }: { email: string; role: string; nom: string; prenom: string; permissions?: string[] }) => {
         const permissionsByRole: Record<string, string[]> = {
           admin: ['dashboard','clients','freelancers','projects','worktracking','invoices','documents','snooze','calendar','analytics','media-buying','prospection','personal','settings','admin'],
           freelancer: ['dashboard','projects','worktracking','calendar','personal','settings'],
           viewer: ['dashboard','calendar','personal','settings'],
         };
-        const permissions = permissionsByRole[role] || permissionsByRole.viewer;
+        const defaultPermissions = permissionsByRole[role] || permissionsByRole.viewer;
 
+        // Priority: Supabase profile permissions > existing local permissions > role defaults
         const existing = get().users.find(u => u.email.toLowerCase() === email.toLowerCase());
+
+        let finalPermissions: string[];
+        if (supabasePermissions && supabasePermissions.length > 0) {
+          // Supabase has permissions — use them (source of truth)
+          finalPermissions = supabasePermissions;
+        } else if (existing?.permissions && existing.permissions.length > 0) {
+          // Fall back to existing local permissions
+          finalPermissions = existing.permissions as string[];
+        } else {
+          // Fall back to role defaults
+          finalPermissions = defaultPermissions;
+        }
+
         if (existing) {
-          // Keep existing permissions if already set, otherwise use role defaults
-          const mergedPermissions = existing.permissions?.length > 0 ? existing.permissions : permissions;
-          set({ currentUser: { ...existing, role: role as any, permissions: mergedPermissions as any, derniereConnexion: new Date().toISOString() } });
+          const updatedUser = { ...existing, role: role as any, permissions: finalPermissions as any, derniereConnexion: new Date().toISOString() };
+          set(state => ({
+            currentUser: updatedUser,
+            users: state.users.map(u => u.email.toLowerCase() === email.toLowerCase() ? updatedUser : u),
+          }));
         } else {
           const newUser: UserAccount = {
             id: uuidv4(),
@@ -728,7 +744,7 @@ export const useStore = create<CRMStore>()(
             prenom,
             role: (role as any) || 'viewer',
             passwordHash: '',
-            permissions: permissions as any,
+            permissions: finalPermissions as any,
             isActive: true,
             dateCreation: new Date().toISOString().split('T')[0],
             derniereConnexion: new Date().toISOString(),
@@ -783,7 +799,14 @@ export const useStore = create<CRMStore>()(
 
       updateUser: (id, updates) => {
         const user = get().users.find(u => u.id === id);
-        set(state => ({ users: state.users.map(u => u.id === id ? { ...u, ...updates } : u) }));
+        set(state => {
+          const updatedUsers = state.users.map(u => u.id === id ? { ...u, ...updates } : u);
+          // Also update currentUser if it's the same user being edited
+          const updatedCurrentUser = state.currentUser?.id === id
+            ? { ...state.currentUser, ...updates }
+            : state.currentUser;
+          return { users: updatedUsers, currentUser: updatedCurrentUser };
+        });
         const changed = Object.keys(updates).join(', ');
         get()._audit('update_user', 'admin', `${user?.email || id} — champs: ${changed}`);
       },
