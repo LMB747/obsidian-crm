@@ -1036,8 +1036,47 @@ export const useStore = create<CRMStore>()(
 
       addUser: (userData) => {
         const newUser: UserAccount = { ...userData, id: (userData as any).id || uuidv4(), dateCreation: new Date().toISOString().split('T')[0] };
-        set(state => ({ users: [...state.users, newUser] }));
-        get()._audit('create_user', 'admin', `${newUser.nom} (${newUser.email}) — rôle: ${newUser.role}`);
+
+        // Si le rôle est freelancer, créer automatiquement un prestataire lié
+        if (newUser.role === 'freelancer') {
+          const freelancerId = uuidv4();
+          const newFreelancer = {
+            id: freelancerId,
+            nom: newUser.nom || '',
+            prenom: newUser.prenom || '',
+            email: newUser.email || '',
+            telephone: '',
+            entreprise: '',
+            specialite: 'autre' as const,
+            competences: [],
+            tjm: 0,
+            statut: 'actif' as const,
+            note: 5,
+            totalFacture: 0,
+            projetsTermines: 0,
+            tags: [],
+            portfolio: '',
+            iban: '',
+            bic: '',
+            tvaApplicable: false,
+            tauxTva: 0,
+            adresse: '',
+            siret: '',
+            numeroTVA: '',
+            notes: '',
+            dateCreation: new Date().toISOString().split('T')[0],
+          };
+          newUser.freelancerId = freelancerId;
+          set(state => ({
+            users: [...state.users, newUser],
+            freelancers: [...state.freelancers, newFreelancer],
+          }));
+          get()._audit('create_user', 'admin', `${newUser.nom} (${newUser.email}) — rôle: freelancer → prestataire créé`);
+          toast.success(`Compte freelancer créé + ajouté aux prestataires`);
+        } else {
+          set(state => ({ users: [...state.users, newUser] }));
+          get()._audit('create_user', 'admin', `${newUser.nom} (${newUser.email}) — rôle: ${newUser.role}`);
+        }
       },
 
       updateUser: (id, updates) => {
