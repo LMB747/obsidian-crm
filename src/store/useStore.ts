@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import { CRMStore, Client, Freelancer, Project, Invoice, SnoozeSubscription, Activity, Task, AgencySettings, TimerSession, UserAccount, AuditLog, TaskNote, ProjectActivity, Notification, Workspace, Invitation, Objective, ProjectSubCategory, UnifiedTag, PersonalTask, PersonalNote } from '../types';
+import { CRMStore, Client, Freelancer, Project, Invoice, SnoozeSubscription, Activity, Task, AgencySettings, TimerSession, UserAccount, AuditLog, TaskNote, ProjectActivity, Notification, Workspace, Invitation, Objective, ProjectSubCategory, UnifiedTag, PersonalTask, PersonalNote, ClientPortalAccess } from '../types';
 import { toast } from '../components/ui/Toast';
 import { verifyPassword } from '../utils/crypto';
 import * as supaService from '../lib/supabaseService';
@@ -61,6 +61,7 @@ export const useStore = create<CRMStore>()(
       setupComplete: false,
       personalTasks: [],
       personalNotes: [],
+      clientPortalAccesses: [],
 
       // ─── Audit helper (private) ──────────────────────────────────────────
       _audit: (action: string, section?: string, details?: string) => {
@@ -867,6 +868,30 @@ export const useStore = create<CRMStore>()(
         supaService.reorderPersonalNotesRemote(orderedIds.map((id, idx) => ({ id, ordre: idx })));
       },
 
+      // ─── Client Portal Actions ────────────────────────────────────────────
+      createClientPortalAccess: (access) => {
+        const newAccess: ClientPortalAccess = {
+          ...access,
+          id: uuidv4(),
+          token: uuidv4().replace(/-/g, '').slice(0, 24),
+          dateCreation: new Date().toISOString(),
+        };
+        set(state => ({
+          clientPortalAccesses: [...state.clientPortalAccesses, newAccess],
+        }));
+        get()._audit('create_portal_access', 'clients', `Accès portail pour client ${access.clientId}`);
+        return newAccess;
+      },
+      deleteClientPortalAccess: (id) => {
+        set(state => ({
+          clientPortalAccesses: state.clientPortalAccesses.filter(a => a.id !== id),
+        }));
+        get()._audit('delete_portal_access', 'clients', 'Accès portail supprimé');
+      },
+      getClientPortalByToken: (token) => {
+        return get().clientPortalAccesses.find(a => a.token === token && a.isActive && new Date(a.expiresAt) > new Date());
+      },
+
       addUser: (userData) => {
         const newUser: UserAccount = { ...userData, id: (userData as any).id || uuidv4(), dateCreation: new Date().toISOString().split('T')[0] };
         set(state => ({ users: [...state.users, newUser] }));
@@ -1141,6 +1166,7 @@ export const useStore = create<CRMStore>()(
         setupComplete: state.setupComplete,
         personalTasks: state.personalTasks,
         personalNotes: state.personalNotes,
+        clientPortalAccesses: state.clientPortalAccesses,
       }),
     }
   )

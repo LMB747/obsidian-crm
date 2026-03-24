@@ -287,7 +287,7 @@ const ProjectTeam: React.FC<{
 
 export const Projects: React.FC = () => {
   const store = useStore();
-  const { projects, updateProject, deleteProject, updateTask, addTask, deleteTask, searchQuery, clients, addProject, addFreelancerToProject, removeFreelancerFromProject, freelancers, addObjective, updateObjective, deleteObjective, addSubCategory, deleteSubCategory, addLienAvancement, deleteLienAvancement } = store;
+  const { projects, updateProject, deleteProject, updateTask, addTask, deleteTask, searchQuery, clients, addProject, addFreelancerToProject, removeFreelancerFromProject, freelancers, addObjective, updateObjective, deleteObjective, addSubCategory, deleteSubCategory, addLienAvancement, deleteLienAvancement, updateLivrable, currentUser } = store;
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [expandedProject, setExpandedProject] = useState<string | null>(projects[0]?.id || null);
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'tous'>('tous');
@@ -1049,43 +1049,91 @@ export const Projects: React.FC = () => {
                                 'publié': 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400',
                               };
                               const assignedF = freelancers.find(f => f.id === liv.freelancerId);
+                              const reviewStatusBadge: Record<string, string> = {
+                                'approved': 'bg-emerald-500/15 text-emerald-300',
+                                'revision_requested': 'bg-amber-500/15 text-amber-300',
+                                'pending': 'bg-slate-500/15 text-slate-400',
+                                'rejected': 'bg-red-500/15 text-red-300',
+                              };
                               return (
-                                <div key={liv.id} className="flex items-center gap-3 p-3 rounded-xl bg-obsidian-700 border border-card-border/50 group">
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-white">{liv.titre}</p>
-                                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                      <span className="text-xs bg-obsidian-600 text-slate-400 px-1.5 py-0.5 rounded">{liv.type}</span>
-                                      <span className="text-xs text-slate-500">{liv.plateforme}</span>
-                                      {assignedF && <span className="text-xs text-slate-500">· {assignedF.prenom} {assignedF.nom}</span>}
-                                      <span className="text-xs text-slate-500">· {new Date(liv.datePrevue).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</span>
+                                <div key={liv.id} className="p-3 rounded-xl bg-obsidian-700 border border-card-border/50 group">
+                                  <div className="flex items-center gap-3">
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium text-white">{liv.titre}</p>
+                                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                        <span className="text-xs bg-obsidian-600 text-slate-400 px-1.5 py-0.5 rounded">{liv.type}</span>
+                                        <span className="text-xs text-slate-500">{liv.plateforme}</span>
+                                        {assignedF && <span className="text-xs text-slate-500">· {assignedF.prenom} {assignedF.nom}</span>}
+                                        <span className="text-xs text-slate-500">· {new Date(liv.datePrevue).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</span>
+                                        {liv.reviewStatus && (
+                                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${reviewStatusBadge[liv.reviewStatus] || ''}`}>
+                                            {liv.reviewStatus === 'approved' ? 'Approuvé' : liv.reviewStatus === 'revision_requested' ? 'Révision demandée' : liv.reviewStatus === 'rejected' ? 'Rejeté' : 'En attente'}
+                                          </span>
+                                        )}
+                                      </div>
                                     </div>
+                                    <select
+                                      value={liv.statut}
+                                      onChange={(e) => {
+                                        const updated = (project.livrables || []).map(l =>
+                                          l.id === liv.id ? { ...l, statut: e.target.value as LivrableStatut } : l
+                                        );
+                                        updateProject(project.id, { livrables: updated });
+                                      }}
+                                      className={`text-xs px-2 py-1 rounded-lg border cursor-pointer ${statusColors[liv.statut]} bg-transparent`}
+                                    >
+                                      <option value="planifié">Planifié</option>
+                                      <option value="en production">En production</option>
+                                      <option value="en revue">En revue</option>
+                                      <option value="validé">Validé</option>
+                                      <option value="publié">Publié</option>
+                                    </select>
+                                    <button
+                                      onClick={() => {
+                                        updateProject(project.id, {
+                                          livrables: (project.livrables || []).filter(l => l.id !== liv.id),
+                                        });
+                                      }}
+                                      className="text-slate-600 hover:text-accent-red transition-colors opacity-0 group-hover:opacity-100"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
                                   </div>
-                                  <select
-                                    value={liv.statut}
-                                    onChange={(e) => {
-                                      const updated = (project.livrables || []).map(l =>
-                                        l.id === liv.id ? { ...l, statut: e.target.value as LivrableStatut } : l
-                                      );
-                                      updateProject(project.id, { livrables: updated });
-                                    }}
-                                    className={`text-xs px-2 py-1 rounded-lg border cursor-pointer ${statusColors[liv.statut]} bg-transparent`}
-                                  >
-                                    <option value="planifié">Planifié</option>
-                                    <option value="en production">En production</option>
-                                    <option value="en revue">En revue</option>
-                                    <option value="validé">Validé</option>
-                                    <option value="publié">Publié</option>
-                                  </select>
-                                  <button
-                                    onClick={() => {
-                                      updateProject(project.id, {
-                                        livrables: (project.livrables || []).filter(l => l.id !== liv.id),
-                                      });
-                                    }}
-                                    className="text-slate-600 hover:text-accent-red transition-colors opacity-0 group-hover:opacity-100"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
+                                  {liv.statut === 'en revue' && (
+                                    <div className="flex gap-2 mt-2">
+                                      <button
+                                        onClick={() => updateLivrable(project.id, liv.id, {
+                                          statut: 'validé',
+                                          reviewStatus: 'approved',
+                                          reviewDate: new Date().toISOString(),
+                                          reviewedBy: `${currentUser?.prenom || ''} ${currentUser?.nom || ''}`.trim()
+                                        })}
+                                        className="flex items-center gap-1 px-2 py-1 bg-emerald-500/20 text-emerald-300 rounded-lg text-[10px] font-semibold hover:bg-emerald-500/30"
+                                      >
+                                        <CheckCircle2 className="w-3 h-3" /> Approuver
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          const comment = prompt('Commentaire de révision:');
+                                          if (comment !== null) {
+                                            updateLivrable(project.id, liv.id, {
+                                              statut: 'en production',
+                                              reviewStatus: 'revision_requested',
+                                              reviewComment: comment,
+                                              reviewDate: new Date().toISOString(),
+                                              reviewedBy: `${currentUser?.prenom || ''} ${currentUser?.nom || ''}`.trim()
+                                            });
+                                          }
+                                        }}
+                                        className="flex items-center gap-1 px-2 py-1 bg-amber-500/20 text-amber-300 rounded-lg text-[10px] font-semibold hover:bg-amber-500/30"
+                                      >
+                                        <AlertCircle className="w-3 h-3" /> Révision
+                                      </button>
+                                    </div>
+                                  )}
+                                  {liv.reviewStatus === 'revision_requested' && liv.reviewComment && (
+                                    <p className="text-[10px] text-amber-400 mt-1 italic">💬 {liv.reviewComment}</p>
+                                  )}
                                 </div>
                               );
                             })}

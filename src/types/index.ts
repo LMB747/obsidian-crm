@@ -324,6 +324,20 @@ export interface DashboardStats {
   revenusSnooze: number;
 }
 
+// ─── CLIENT PORTAL ───────────────────────────────────────────────────────────
+export type ClientPortalPermission = 'view_progress' | 'view_deliverables' | 'approve_deliverables' | 'view_invoices' | 'chat';
+
+export interface ClientPortalAccess {
+  id: string;
+  clientId: string;
+  projectIds: string[];
+  token: string;
+  permissions: ClientPortalPermission[];
+  expiresAt: string;
+  dateCreation: string;
+  isActive: boolean;
+}
+
 // ─── STORE TYPES ──────────────────────────────────────────────────────────────
 export interface CRMStore {
   // Data
@@ -473,6 +487,12 @@ export interface CRMStore {
   updatePersonalNote: (id: string, updates: Partial<PersonalNote>) => void;
   deletePersonalNote: (id: string) => void;
   reorderPersonalNotes: (orderedIds: string[]) => void;
+
+  // Actions — Client Portal
+  clientPortalAccesses: ClientPortalAccess[];
+  createClientPortalAccess: (access: Omit<ClientPortalAccess, 'id' | 'token' | 'dateCreation'>) => ClientPortalAccess;
+  deleteClientPortalAccess: (id: string) => void;
+  getClientPortalByToken: (token: string) => ClientPortalAccess | undefined;
 }
 
 export interface Notification {
@@ -647,6 +667,10 @@ export interface Livrable {
   freelancerId?: string;
   description: string;
   lienExterne?: string;
+  reviewStatus?: 'pending' | 'approved' | 'rejected' | 'revision_requested';
+  reviewComment?: string;
+  reviewDate?: string;
+  reviewedBy?: string;
 }
 
 // ─── DÉPENSE PROJET ─────────────────────────────────────────────────────────

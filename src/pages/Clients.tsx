@@ -4,7 +4,7 @@ import {
   MoreVertical, Edit2, Trash2, Eye, Star,
   TrendingUp, Users, UserCheck, UserX, Crown, Download, Upload,
   FolderOpen, FileText, Clock, MessageSquare, Activity as ActivityIcon,
-  MapPin, Globe
+  MapPin, Globe, ExternalLink
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { Client, ClientStatus, SecteurActivite, TypePresence } from '../types';
@@ -16,6 +16,7 @@ import { exportClientsCsv, parseCsv, mapCsvToClients } from '../utils/csvExport'
 import { useDebounce } from '../hooks/useDebounce';
 import { TagPicker } from '../components/ui/TagPicker';
 import clsx from 'clsx';
+import { toast } from '../components/ui/Toast';
 
 const statusConfig: Record<ClientStatus, { label: string; variant: any; dot: string }> = {
   vip:      { label: 'VIP',      variant: 'warning', dot: 'bg-amber-400' },
@@ -141,7 +142,7 @@ const ClientTimeline: React.FC<{
 };
 
 export const Clients: React.FC = () => {
-  const { clients, addClient, updateClient, deleteClient, searchQuery, projects, invoices, activities, unifiedTags } = useStore();
+  const { clients, addClient, updateClient, deleteClient, searchQuery, projects, invoices, activities, unifiedTags, createClientPortalAccess } = useStore();
   const getTagColor = (name: string) => unifiedTags.find(t => t.name === name)?.color || '#6366f1';
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -662,6 +663,23 @@ export const Clients: React.FC = () => {
             <div className="flex gap-3">
               <button onClick={() => { setIsViewOpen(false); openEdit(viewingClient); }} className="flex-1 py-2.5 rounded-xl bg-gradient-primary text-white text-sm font-semibold hover:opacity-90 transition-opacity">
                 Modifier
+              </button>
+              <button
+                onClick={() => {
+                  const access = createClientPortalAccess({
+                    clientId: viewingClient.id,
+                    projectIds: projects.filter(p => p.clientId === viewingClient.id).map(p => p.id),
+                    permissions: ['view_progress', 'view_deliverables', 'view_invoices'],
+                    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+                    isActive: true,
+                  });
+                  navigator.clipboard.writeText(`${window.location.origin}/#client-portal/${access.token}`);
+                  toast.success('Lien copie dans le presse-papier !');
+                }}
+                className="flex items-center gap-1.5 px-3 py-2.5 bg-primary-500/20 text-primary-300 rounded-xl text-xs font-semibold hover:bg-primary-500/30 transition-all"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                Portail
               </button>
               <button onClick={() => setIsViewOpen(false)} className="flex-1 py-2.5 rounded-xl border border-card-border text-slate-400 text-sm font-medium hover:bg-card-hover hover:text-white transition-all">
                 Fermer

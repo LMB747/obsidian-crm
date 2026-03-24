@@ -3,12 +3,14 @@ import {
   Target, CheckCircle2, Clock, PlayCircle,
   AlertCircle, Calendar, TrendingUp, Briefcase,
   ChevronRight, ListTodo, MessageSquare, Send, ChevronDown, ChevronUp, X,
-  Crosshair, FileText, Euro, Timer, Link, Play, Pause, MessageCircle
+  Crosshair, FileText, Euro, Timer, Link, Play, Pause, MessageCircle,
+  Plus, Receipt
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useStore } from '../store/useStore';
+import { toast } from '../components/ui/Toast';
 import { ProjectChat } from '../components/chat/ProjectChat';
-import { Task, Project, Objective } from '../types';
+import { Task, Project, Objective, LienAvancementType } from '../types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const PRIORITY_CONFIG = {
@@ -282,7 +284,10 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, project, onStatusChange, onAd
 
 // ─── FreelancerPortal ─────────────────────────────────────────────────────────
 export const FreelancerPortal: React.FC = () => {
-  const { currentUser, projects, updateTask, addTaskNote, setActiveSection, timerSessions, updateObjective, freelancers } = useStore();
+  const { currentUser, projects, updateTask, addTaskNote, setActiveSection, timerSessions, updateObjective, freelancers, addLienAvancement, invoices } = useStore();
+
+  const [showProposeLien, setShowProposeLien] = useState<string | null>(null);
+  const [proposeLienForm, setProposeLienForm] = useState({ titre: '', url: '', type: 'autre' as LienAvancementType, description: '' });
 
   if (!currentUser) return null;
 
@@ -575,14 +580,14 @@ export const FreelancerPortal: React.FC = () => {
 
       {/* ── Mes Ressources ──────────────────────────────────────────── */}
       {(() => {
-        const allLinks = projects
-          .filter(p => p.freelancerIds?.includes(currentUser.freelancerId || currentUser.id))
+        const myProjects = projects.filter(p => p.freelancerIds?.includes(currentUser.freelancerId || currentUser.id));
+        const allLinks = myProjects
           .flatMap(p => (p.liensAvancement || [])
             .filter(l => l.statutVisible && (l.freelancerIds.length === 0 || l.freelancerIds.includes(currentUser.freelancerId || currentUser.id)))
             .map(l => ({ ...l, projectNom: p.nom }))
           );
 
-        if (allLinks.length === 0) return null;
+        if (allLinks.length === 0 && myProjects.length === 0) return null;
 
         return (
           <div className="mt-8">
@@ -590,23 +595,109 @@ export const FreelancerPortal: React.FC = () => {
               <Link className="w-5 h-5 text-primary-400" />
               Mes Ressources
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {allLinks.map(lien => (
-                <a key={lien.id} href={lien.url} target="_blank" rel="noopener noreferrer"
-                  className="bg-card border border-card-border rounded-xl p-4 hover:border-primary-500/30 transition-all group">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-8 h-8 rounded-lg bg-obsidian-700 flex items-center justify-center">
-                      <Link className="w-4 h-4 text-primary-400" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-white truncate group-hover:text-primary-300">{lien.titre}</p>
-                      <p className="text-[10px] text-slate-500">{lien.projectNom}</p>
-                    </div>
-                  </div>
-                  {lien.description && <p className="text-xs text-slate-400 line-clamp-2">{lien.description}</p>}
-                </a>
+
+            {/* Propose link buttons per project */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              {myProjects.map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => setShowProposeLien(prev => prev === p.id ? null : p.id)}
+                  className="flex items-center gap-1 px-2 py-1 bg-primary-500/20 text-primary-300 rounded-lg text-[10px] font-semibold hover:bg-primary-500/30"
+                >
+                  <Plus className="w-3 h-3" /> Proposer un lien ({p.nom})
+                </button>
               ))}
             </div>
+
+            {/* Inline form for proposing a link */}
+            {showProposeLien && (() => {
+              const targetProject = myProjects.find(p => p.id === showProposeLien);
+              if (!targetProject) return null;
+              return (
+                <div className="bg-card border border-card-border rounded-xl p-4 mb-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-white">Proposer un lien pour {targetProject.nom}</p>
+                    <button onClick={() => setShowProposeLien(null)} className="text-slate-500 hover:text-white"><X className="w-4 h-4" /></button>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Titre du lien"
+                    value={proposeLienForm.titre}
+                    onChange={e => setProposeLienForm(f => ({ ...f, titre: e.target.value }))}
+                    className="w-full bg-obsidian-700 border border-card-border text-white text-sm rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  />
+                  <input
+                    type="url"
+                    placeholder="URL"
+                    value={proposeLienForm.url}
+                    onChange={e => setProposeLienForm(f => ({ ...f, url: e.target.value }))}
+                    className="w-full bg-obsidian-700 border border-card-border text-white text-sm rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  />
+                  <select
+                    value={proposeLienForm.type}
+                    onChange={e => setProposeLienForm(f => ({ ...f, type: e.target.value as LienAvancementType }))}
+                    className="w-full bg-obsidian-700 border border-card-border text-white text-sm rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  >
+                    <option value="notion">Notion</option>
+                    <option value="figma">Figma</option>
+                    <option value="google_drive">Google Drive</option>
+                    <option value="github">GitHub</option>
+                    <option value="trello">Trello</option>
+                    <option value="asana">Asana</option>
+                    <option value="miro">Miro</option>
+                    <option value="loom">Loom</option>
+                    <option value="autre">Autre</option>
+                  </select>
+                  <input
+                    type="text"
+                    placeholder="Description (optionnel)"
+                    value={proposeLienForm.description}
+                    onChange={e => setProposeLienForm(f => ({ ...f, description: e.target.value }))}
+                    className="w-full bg-obsidian-700 border border-card-border text-white text-sm rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  />
+                  <button
+                    onClick={() => {
+                      if (!proposeLienForm.titre || !proposeLienForm.url) return;
+                      addLienAvancement(showProposeLien, {
+                        titre: proposeLienForm.titre,
+                        url: proposeLienForm.url,
+                        type: proposeLienForm.type,
+                        description: proposeLienForm.description,
+                        freelancerIds: [],
+                        ajoutePar: currentUser?.id || '',
+                        statutVisible: false,
+                      });
+                      toast.success('Lien propose — en attente de validation');
+                      setProposeLienForm({ titre: '', url: '', type: 'autre', description: '' });
+                      setShowProposeLien(null);
+                    }}
+                    className="flex items-center gap-1 px-3 py-2 bg-primary-500 text-white rounded-xl text-xs font-semibold hover:bg-primary-600 transition-all"
+                  >
+                    <Plus className="w-3 h-3" /> Soumettre
+                  </button>
+                </div>
+              );
+            })()}
+
+            {allLinks.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {allLinks.map(lien => (
+                  <a key={lien.id} href={lien.url} target="_blank" rel="noopener noreferrer"
+                    className="bg-card border border-card-border rounded-xl p-4 hover:border-primary-500/30 transition-all group">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-8 h-8 rounded-lg bg-obsidian-700 flex items-center justify-center">
+                        <Link className="w-4 h-4 text-primary-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-white truncate group-hover:text-primary-300">{lien.titre}</p>
+                        <p className="text-[10px] text-slate-500">{lien.projectNom}</p>
+                      </div>
+                    </div>
+                    {lien.description && <p className="text-xs text-slate-400 line-clamp-2">{lien.description}</p>}
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
         );
       })()}
@@ -623,6 +714,47 @@ export const FreelancerPortal: React.FC = () => {
           </div>
         </div>
       ))}
+
+      {/* ── Mes Factures ──────────────────────────────────────────── */}
+      {(() => {
+        const myProjects = projects.filter(p =>
+          p.freelancerIds?.includes(currentUser?.freelancerId || currentUser?.id || '')
+        );
+        const myInvoices = invoices.filter(i =>
+          myProjects.some(p => p.id === i.projectId)
+        );
+
+        if (myInvoices.length === 0) return null;
+
+        return (
+          <div className="mt-8">
+            <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-4">
+              <Receipt className="w-5 h-5 text-primary-400" />
+              Mes Factures
+            </h2>
+            <div className="space-y-2">
+              {myInvoices.map(inv => (
+                <div key={inv.id} className="flex items-center gap-3 p-3 bg-card border border-card-border rounded-xl">
+                  <Receipt className="w-5 h-5 text-primary-400 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white">{inv.numero}</p>
+                    <p className="text-[10px] text-slate-500">{inv.clientNom}</p>
+                  </div>
+                  <p className="text-sm font-bold text-white">{inv.total.toLocaleString('fr-FR')} &euro;</p>
+                  <span className={clsx(
+                    'px-2 py-0.5 rounded-full text-[10px] font-semibold',
+                    inv.statut === 'payée' ? 'bg-emerald-500/20 text-emerald-300' :
+                    inv.statut === 'en retard' ? 'bg-red-500/20 text-red-300' :
+                    'bg-amber-500/20 text-amber-300'
+                  )}>
+                    {inv.statut}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Objectives Section ──────────────────────────────────────── */}
       {assignedObjectives.length > 0 && (

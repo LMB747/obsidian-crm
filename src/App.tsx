@@ -22,6 +22,7 @@ const FreelancerPortal = lazy(() => import('./pages/FreelancerPortal').then(m =>
 const ProspectionCRM  = lazy(() => import('./pages/ProspectionCRM').then(m => ({ default: m.ProspectionCRM })));
 const CalendarPage    = lazy(() => import('./pages/Calendar').then(m => ({ default: m.Calendar })));
 const PersonalSpace   = lazy(() => import('./pages/PersonalSpace').then(m => ({ default: m.PersonalSpace })));
+const ClientPortal    = lazy(() => import('./pages/ClientPortal'));
 const NotFound        = lazy(() => import('./pages/NotFound').then(m => ({ default: m.NotFound })));
 
 const pageMap: Record<string, React.ComponentType> = {
@@ -41,6 +42,7 @@ const pageMap: Record<string, React.ComponentType> = {
   settings:            Settings,
   admin:               Admin,
   'freelancer-portal': FreelancerPortal,
+  'client-portal': ClientPortal,
 };
 
 // ─── Helper: sync user into Zustand store ──────────────────────────────────
@@ -111,7 +113,9 @@ const App: React.FC = () => {
   // ── 3. URL hash sync ──────────────────────────────────────────────────────
   useEffect(() => {
     const hash = window.location.hash.replace('#', '');
-    if (hash && hash !== activeSection && hash in pageMap) setActiveSection(hash);
+    // Support client-portal/TOKEN format
+    const section = hash.startsWith('client-portal') ? 'client-portal' : hash;
+    if (section && section !== activeSection && section in pageMap) setActiveSection(section);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -121,7 +125,8 @@ const App: React.FC = () => {
   useEffect(() => {
     const onPop = () => {
       const hash = window.location.hash.replace('#', '');
-      if (hash && hash in pageMap) setActiveSection(hash);
+      const section = hash.startsWith('client-portal') ? 'client-portal' : hash;
+      if (section && section in pageMap) setActiveSection(section);
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
@@ -129,6 +134,11 @@ const App: React.FC = () => {
 
   // ── 4. Render ─────────────────────────────────────────────────────────────
   if (!ready) return <PageSkeleton />;
+
+  // Client portal is accessible without authentication
+  if (activeSection === 'client-portal') {
+    return <Suspense fallback={<PageSkeleton />}><ClientPortal /></Suspense>;
+  }
 
   if (!currentUser) return <LoginScreen onLogin={handleLogin} />;
 
