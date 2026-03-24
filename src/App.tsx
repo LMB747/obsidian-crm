@@ -66,6 +66,20 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  // Auto-restore session on page load
+  useEffect(() => {
+    const saved = getSession();
+    if (saved && !currentUser) {
+      const nameParts = (saved.nom || '').split(' ');
+      useStore.getState().syncSessionUser({
+        email: saved.email,
+        role: saved.role || 'admin',
+        nom: nameParts.slice(1).join(' ') || saved.nom || '',
+        prenom: nameParts[0] || '',
+      });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Combined auth: Supabase OR API session OR store-based currentUser
   const isLoggedIn = !!supabaseUser || !!sessionUser || !!currentUser;
 

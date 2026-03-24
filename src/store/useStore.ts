@@ -586,7 +586,10 @@ export const useStore = create<CRMStore>()(
       logout: () => {
         const user = get().currentUser;
         if (user) get().addAuditLog({ userId: user.id, userNom: `${user.prenom} ${user.nom}`, action: 'logout', details: 'Déconnexion', date: new Date().toISOString() });
+        // Clear everything: store user + API session + Supabase
         set({ currentUser: null });
+        try { localStorage.removeItem('obsidian-session'); } catch {}
+        window.location.reload();
       },
 
       // Sync API session user into Zustand currentUser
