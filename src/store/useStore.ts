@@ -1288,7 +1288,7 @@ export const useStore = create<CRMStore>()(
       },
     }),
     {
-      name: 'obsidian-crm-v6',
+      name: 'obsidian-crm-v5',
       version: 6,
       migrate: (persistedState: any, version: number) => {
         // v1→v2 : migrate old SnoozePlan names + add missing fields

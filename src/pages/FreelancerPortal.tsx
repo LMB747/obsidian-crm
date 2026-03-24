@@ -293,23 +293,43 @@ export const FreelancerPortal: React.FC = () => {
 
   const fullName = `${currentUser.prenom || ''} ${currentUser.nom || ''}`.trim();
 
-  // Find all tasks assigned to this user
+  // Find all tasks assigned to this user (par ID ou par nom)
+  const myIds = [currentUser.id, currentUser.freelancerId].filter(Boolean) as string[];
+
   const assignedTasks = useMemo(() => {
     const result: { task: Task; project: Project }[] = [];
     for (const project of projects) {
+      // Le freelancer doit être dans le projet OU ses tâches
+      const isInProject = project.freelancerIds?.some(fid => myIds.includes(fid));
+
       for (const task of project.taches) {
-        const assignee = task.assigneA.toLowerCase();
-        if (
+        // Match par assigneAIds (IDs)
+        const matchById = (task.assigneAIds || []).some(id => myIds.includes(id));
+        // Match par nom textuel (legacy)
+        const assignee = (task.assigneA || '').toLowerCase();
+        const matchByName = fullName && (
           assignee.includes(fullName.toLowerCase()) ||
           assignee.includes((currentUser.nom || '').toLowerCase()) ||
           assignee.includes((currentUser.prenom || '').toLowerCase())
-        ) {
+        );
+
+        if (matchById || matchByName) {
           result.push({ task, project });
+        }
+      }
+
+      // Si le freelancer est dans le projet mais aucune tâche spécifique assignée,
+      // montrer toutes les tâches non-assignées du projet
+      if (isInProject && !result.some(r => r.project.id === project.id)) {
+        for (const task of project.taches) {
+          if (!task.assigneA && (!task.assigneAIds || task.assigneAIds.length === 0)) {
+            result.push({ task, project });
+          }
         }
       }
     }
     return result;
-  }, [projects, currentUser, fullName]);
+  }, [projects, currentUser, fullName, myIds]);
 
   // Stats
   const stats = useMemo(() => {
