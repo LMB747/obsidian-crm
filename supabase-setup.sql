@@ -131,3 +131,39 @@ CREATE POLICY "Users can CRUD own personal notes" ON personal_notes
   WITH CHECK (user_id = auth.uid());
 
 CREATE INDEX idx_personal_notes_user ON personal_notes(user_id);
+
+-- ============================================================
+-- 6. AUDIT LOGS — Journal d'activité
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id TEXT NOT NULL,
+  user_nom TEXT NOT NULL DEFAULT '',
+  action TEXT NOT NULL,
+  section TEXT,
+  details TEXT,
+  date TIMESTAMPTZ DEFAULT now(),
+  ip TEXT
+);
+
+ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+
+-- Admins can read all audit logs
+CREATE POLICY "Admins can read all audit logs" ON audit_logs
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  );
+
+-- Authenticated users can insert audit logs
+CREATE POLICY "Authenticated users can insert audit logs" ON audit_logs
+  FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+
+CREATE INDEX idx_audit_logs_date ON audit_logs(date DESC);
+CREATE INDEX idx_audit_logs_action ON audit_logs(action);
+
+-- ============================================================
+-- 7. PERMISSIONS par utilisateur (optionnel, extension de profiles)
+-- ============================================================
+
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS permissions TEXT[] DEFAULT '{}';

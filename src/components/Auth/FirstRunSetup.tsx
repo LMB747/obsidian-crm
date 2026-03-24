@@ -72,7 +72,7 @@ export const FirstRunSetup: React.FC<FirstRunSetupProps> = ({ onSetup }) => {
   const validateStep2 = () => {
     const e: Record<string, string> = {};
     if (!password) e.password = 'Le mot de passe est requis.';
-    else if (password.length < 8) e.password = 'Minimum 8 caractères.';
+    else if (password.length < 6) e.password = 'Minimum 6 caractères.';
     if (!confirmPassword) e.confirmPassword = 'Veuillez confirmer le mot de passe.';
     else if (password !== confirmPassword) e.confirmPassword = 'Les mots de passe ne correspondent pas.';
     setErrors(e);

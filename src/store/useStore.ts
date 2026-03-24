@@ -20,7 +20,7 @@ const adminAccount: UserAccount = {
   nom: 'Admin',
   prenom: 'Super',
   role: 'admin',
-  permissions: ['dashboard','clients','freelancers','projects','worktracking','invoices','documents','snooze','analytics','settings','admin'],
+  permissions: ['dashboard','clients','freelancers','projects','worktracking','invoices','documents','snooze','calendar','analytics','media-buying','prospection','personal','settings','admin'],
   isActive: true,
   dateCreation: '2026-01-01',
 };
@@ -61,6 +61,19 @@ export const useStore = create<CRMStore>()(
       personalTasks: [],
       personalNotes: [],
 
+      // ─── Audit helper (private) ──────────────────────────────────────────
+      _audit: (action: string, section?: string, details?: string) => {
+        const cu = get().currentUser;
+        get().addAuditLog({
+          userId: cu?.id || 'system',
+          userNom: cu ? `${cu.prenom} ${cu.nom}`.trim() : 'Système',
+          action,
+          section,
+          details,
+          date: new Date().toISOString(),
+        });
+      },
+
       // ─── Tags unifiés ─────────────────────────────────────────────────────
       unifiedTags: [
         { id: 'tag-vip',        name: 'VIP',         color: '#f59e0b' },
@@ -100,8 +113,7 @@ export const useStore = create<CRMStore>()(
           entityNom: newClient.nom,
         });
         toast.success('Client ajouté', `${newClient.nom} — ${newClient.entreprise}`);
-        const cu = get().currentUser;
-        get().addAuditLog({ userId: cu?.id || 'system', userNom: cu ? `${cu.prenom} ${cu.nom}` : 'Système', action: 'create_client', section: 'clients', details: `${newClient.nom} — ${newClient.entreprise}`, date: new Date().toISOString() });
+        get()._audit('create_client', 'clients', `${newClient.nom} — ${newClient.entreprise}`);
       },
 
       updateClient: (id, updates) => {
@@ -116,8 +128,7 @@ export const useStore = create<CRMStore>()(
         const client = get().clients.find(c => c.id === id);
         set((state) => ({ clients: state.clients.filter((c) => c.id !== id) }));
         toast.warning('Client supprimé');
-        const cu = get().currentUser;
-        get().addAuditLog({ userId: cu?.id || 'system', userNom: cu ? `${cu.prenom} ${cu.nom}` : 'Système', action: 'delete_client', section: 'clients', details: client?.nom || id, date: new Date().toISOString() });
+        get()._audit('delete_client', 'clients', client?.nom || id);
       },
 
       // ─── Freelancer Actions ────────────────────────────────────────────────────
@@ -137,8 +148,7 @@ export const useStore = create<CRMStore>()(
           entityNom: `${newFreelancer.prenom} ${newFreelancer.nom}`,
         });
         toast.success('Prestataire ajouté', `${newFreelancer.prenom} ${newFreelancer.nom} — ${newFreelancer.entreprise}`);
-        const cu = get().currentUser;
-        get().addAuditLog({ userId: cu?.id || 'system', userNom: cu ? `${cu.prenom} ${cu.nom}` : 'Système', action: 'create_freelancer', section: 'freelancers', details: `${newFreelancer.prenom} ${newFreelancer.nom}`, date: new Date().toISOString() });
+        get()._audit('create_freelancer', 'freelancers', `${newFreelancer.prenom} ${newFreelancer.nom}`);
       },
 
       updateFreelancer: (id, updates) => {
@@ -151,8 +161,7 @@ export const useStore = create<CRMStore>()(
         const fl = get().freelancers.find(f => f.id === id);
         set((state) => ({ freelancers: state.freelancers.filter((f) => f.id !== id) }));
         toast.warning('Prestataire supprimé');
-        const cu = get().currentUser;
-        get().addAuditLog({ userId: cu?.id || 'system', userNom: cu ? `${cu.prenom} ${cu.nom}` : 'Système', action: 'delete_freelancer', section: 'freelancers', details: fl ? `${fl.prenom} ${fl.nom}` : id, date: new Date().toISOString() });
+        get()._audit('delete_freelancer', 'freelancers', fl ? `${fl.prenom} ${fl.nom}` : id);
       },
 
       // ─── Project Actions ───────────────────────────────────────────────────
@@ -177,8 +186,7 @@ export const useStore = create<CRMStore>()(
           date: new Date().toISOString(),
         });
         toast.success('Projet créé', newProject.nom);
-        const cu2 = get().currentUser;
-        get().addAuditLog({ userId: cu2?.id || 'system', userNom: cu2 ? `${cu2.prenom} ${cu2.nom}` : 'Système', action: 'create_project', section: 'projects', details: `${newProject.nom} — ${newProject.clientNom}`, date: new Date().toISOString() });
+        get()._audit('create_project', 'projects', `${newProject.nom} — ${newProject.clientNom}`);
       },
 
       updateProject: (id, updates) => {
@@ -191,8 +199,7 @@ export const useStore = create<CRMStore>()(
         const proj = get().projects.find(p => p.id === id);
         set((state) => ({ projects: state.projects.filter((p) => p.id !== id) }));
         toast.warning('Projet supprimé');
-        const cu3 = get().currentUser;
-        get().addAuditLog({ userId: cu3?.id || 'system', userNom: cu3 ? `${cu3.prenom} ${cu3.nom}` : 'Système', action: 'delete_project', section: 'projects', details: proj?.nom || id, date: new Date().toISOString() });
+        get()._audit('delete_project', 'projects', proj?.nom || id);
       },
 
       addTask: (projectId, taskData) => {
@@ -315,12 +322,13 @@ export const useStore = create<CRMStore>()(
         const newInvoice: Invoice = { ...invoiceData, id: uuidv4() };
         set((state) => ({ invoices: [...state.invoices, newInvoice] }));
         toast.success('Facture créée', newInvoice.numero);
+        get()._audit('create_invoice', 'invoices', `${newInvoice.numero} — ${newInvoice.clientNom} — ${newInvoice.total?.toLocaleString('fr-FR')} €`);
       },
 
       updateInvoice: (id, updates) => {
+        const current = get().invoices.find((i) => i.id === id);
         // Check if status is transitioning to 'payée'
         if (updates.statut === 'payée') {
-          const current = get().invoices.find((i) => i.id === id);
           if (current && current.statut !== 'payée') {
             toast.success('Facture payée ✓', `${current.numero} — ${current.total.toLocaleString('fr-FR')} €`);
           }
@@ -328,6 +336,7 @@ export const useStore = create<CRMStore>()(
         set((state) => ({
           invoices: state.invoices.map((i) => (i.id === id ? { ...i, ...updates } : i)),
         }));
+        if (updates.statut) get()._audit('update_invoice', 'invoices', `${current?.numero || id} → ${updates.statut}`);
         // Lier au projet si payée
         if (updates.statut === 'payée') {
           const inv = get().invoices.find(i => i.id === id);
@@ -353,7 +362,10 @@ export const useStore = create<CRMStore>()(
       },
 
       deleteInvoice: (id) => {
+        const inv = get().invoices.find(i => i.id === id);
         set((state) => ({ invoices: state.invoices.filter((i) => i.id !== id) }));
+        toast.warning('Facture supprimée');
+        get()._audit('delete_invoice', 'invoices', inv?.numero || id);
       },
 
       // ─── Snooze Actions ────────────────────────────────────────────────────
@@ -377,13 +389,17 @@ export const useStore = create<CRMStore>()(
       },
 
       deleteSnoozeSubscription: (id) => {
+        const sub = get().snoozeSubscriptions.find(s => s.id === id);
         set((state) => ({ snoozeSubscriptions: state.snoozeSubscriptions.filter((s) => s.id !== id) }));
         toast.warning('Abonnement supprimé');
+        get()._audit('delete_snooze', 'snooze', sub?.utilisateur || id);
       },
 
       clearAllSnoozeSubscriptions: () => {
+        const count = get().snoozeSubscriptions.length;
         set({ snoozeSubscriptions: [] });
         toast.warning('Tous les abonnements supprimés');
+        get()._audit('clear_all_snooze', 'snooze', `${count} abonnements supprimés`);
       },
 
       // ─── Workspace Actions ──────────────────────────────────────────────────
@@ -580,12 +596,13 @@ export const useStore = create<CRMStore>()(
         if (!valid) return { success: false, error: 'Email ou mot de passe incorrect.' };
         const updated = { ...user, derniereConnexion: new Date().toISOString() };
         set(state => ({ currentUser: updated, users: state.users.map(u => u.id === user.id ? updated : u) }));
-        get().addAuditLog({ userId: user.id, userNom: `${user.prenom} ${user.nom}`, action: 'login', details: 'Connexion réussie', date: new Date().toISOString() });
+        get()._audit('login', undefined, `Connexion réussie — ${user.email}`);
         toast.success('Bienvenue', `${user.prenom} ${user.nom}`);
         return { success: true };
       },
 
       logout: () => {
+        get()._audit('logout', undefined, 'Déconnexion');
         set({ currentUser: null });
         try { localStorage.removeItem('obsidian-session'); } catch {}
         // Supabase signout (async, fire and forget)
@@ -596,9 +613,9 @@ export const useStore = create<CRMStore>()(
       // Sync API session user into Zustand currentUser
       syncSessionUser: ({ email, role, nom, prenom }: { email: string; role: string; nom: string; prenom: string }) => {
         const permissionsByRole: Record<string, string[]> = {
-          admin: ['dashboard','clients','freelancers','projects','worktracking','invoices','documents','snooze','analytics','settings','admin','personal'],
-          freelancer: ['dashboard','projects','worktracking','personal'],
-          viewer: ['dashboard','personal'],
+          admin: ['dashboard','clients','freelancers','projects','worktracking','invoices','documents','snooze','calendar','analytics','media-buying','prospection','personal','settings','admin'],
+          freelancer: ['dashboard','projects','worktracking','calendar','personal'],
+          viewer: ['dashboard','calendar','personal'],
         };
         const permissions = permissionsByRole[role] || permissionsByRole.viewer;
 
@@ -665,14 +682,20 @@ export const useStore = create<CRMStore>()(
       addUser: (userData) => {
         const newUser: UserAccount = { ...userData, id: uuidv4(), dateCreation: new Date().toISOString().split('T')[0] };
         set(state => ({ users: [...state.users, newUser] }));
+        get()._audit('create_user', 'admin', `${newUser.nom} (${newUser.email}) — rôle: ${newUser.role}`);
       },
 
       updateUser: (id, updates) => {
+        const user = get().users.find(u => u.id === id);
         set(state => ({ users: state.users.map(u => u.id === id ? { ...u, ...updates } : u) }));
+        const changed = Object.keys(updates).join(', ');
+        get()._audit('update_user', 'admin', `${user?.email || id} — champs: ${changed}`);
       },
 
       deleteUser: (id) => {
+        const user = get().users.find(u => u.id === id);
         set(state => ({ users: state.users.filter(u => u.id !== id) }));
+        get()._audit('delete_user', 'admin', user?.email || id);
       },
 
       addAuditLog: (logData) => {
@@ -681,7 +704,11 @@ export const useStore = create<CRMStore>()(
       },
 
       // ─── UI Actions ────────────────────────────────────────────────────────
-      setActiveSection: (section) => set({ activeSection: section }),
+      setActiveSection: (section) => {
+        const prev = get().activeSection;
+        set({ activeSection: section });
+        if (section !== prev) get()._audit('view_section', section, `Navigation: ${prev} → ${section}`);
+      },
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
       setSearchQuery: (query) => set({ searchQuery: query }),
 

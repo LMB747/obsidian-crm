@@ -395,6 +395,9 @@ export interface CRMStore {
   addAuditLog: (log: Omit<AuditLog, 'id'>) => void;
   completeSetup: (data: { agencyName: string; adminEmail: string; passwordHash: string }) => void;
 
+  // Internal audit helper
+  _audit: (action: string, section?: string, details?: string) => void;
+
   // Actions — Personal Space
   personalTasks: PersonalTask[];
   personalNotes: PersonalNote[];
@@ -452,7 +455,8 @@ export type UserRole = 'admin' | 'freelancer' | 'viewer';
 export type SectionPermission =
   | 'dashboard' | 'clients' | 'freelancers' | 'projects'
   | 'worktracking' | 'invoices' | 'documents' | 'snooze'
-  | 'analytics' | 'settings' | 'admin' | 'personal';
+  | 'calendar' | 'analytics' | 'media-buying' | 'prospection'
+  | 'personal' | 'settings' | 'admin';
 
 // ─── ESPACE PERSONNEL — Tâches & Notes ──────────────────────────────────────
 

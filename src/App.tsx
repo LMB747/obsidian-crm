@@ -82,6 +82,7 @@ const App: React.FC = () => {
       const result = await signIn(email, password);
       if (result.success && result.user) {
         syncToStore(result.user.email, `${result.user.prenom} ${result.user.nom}`.trim(), result.user.role);
+        useStore.getState()._audit('login', undefined, `Connexion Supabase — ${result.user.email}`);
         return { success: true };
       }
       if (result.error) return { success: false, error: result.error };
@@ -92,6 +93,7 @@ const App: React.FC = () => {
       const apiResult = await loginAPI(email, password);
       if (apiResult.success && apiResult.user) {
         syncToStore(apiResult.user.email, apiResult.user.nom, apiResult.user.role || 'admin');
+        useStore.getState()._audit('login', undefined, `Connexion API — ${apiResult.user.email}`);
         return { success: true };
       }
       if (apiResult.error && !apiResult.error.includes('non disponible')) {
