@@ -67,23 +67,20 @@ const App: React.FC = () => {
     return () => window.removeEventListener('popstate', onPopState);
   }, [setActiveSection]);
 
-  // Vérifier si l'admin a déjà configuré son compte (a un passwordHash)
-  const users = useStore((s) => s.users);
-  const adminConfigured = users.some(u => u.role === 'admin' && u.passwordHash);
-  const [showSetup, setShowSetup] = useState(false);
+  // Setup uniquement accessible via URL #setup (jamais affiché aux visiteurs)
+  const [showSetup, setShowSetup] = useState(() => window.location.hash === '#setup' && !setupComplete);
 
-  // Premier lancement → configuration initiale (seulement si aucun admin n'est configuré)
-  if (!adminConfigured && (!setupComplete || showSetup)) {
+  if (showSetup && !setupComplete) {
     return (
       <Suspense fallback={<PageSkeleton />}>
-        <FirstRunSetup onSetup={completeSetup} />
+        <FirstRunSetup onSetup={(data) => { completeSetup(data); setShowSetup(false); }} />
       </Suspense>
     );
   }
 
-  // Si pas connecté → écran de login
+  // Si pas connecté → toujours montrer l'écran de login
   if (!currentUser) {
-    return <LoginScreen onLogin={login} onFirstSetup={!adminConfigured ? () => setShowSetup(true) : undefined} />;
+    return <LoginScreen onLogin={login} onFirstSetup={!setupComplete ? () => setShowSetup(true) : undefined} />;
   }
 
   // Si freelancer → portail limité (sauf si section autorisée dans permissions)
