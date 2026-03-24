@@ -227,7 +227,7 @@ export const FreelancerPortal: React.FC = () => {
 
   if (!currentUser) return null;
 
-  const fullName = `${currentUser.prenom} ${currentUser.nom}`;
+  const fullName = `${currentUser.prenom || ''} ${currentUser.nom || ''}`.trim();
 
   // Find all tasks assigned to this user
   const assignedTasks = useMemo(() => {
@@ -237,8 +237,8 @@ export const FreelancerPortal: React.FC = () => {
         const assignee = task.assigneA.toLowerCase();
         if (
           assignee.includes(fullName.toLowerCase()) ||
-          assignee.includes(currentUser.nom.toLowerCase()) ||
-          assignee.includes(currentUser.prenom.toLowerCase())
+          assignee.includes((currentUser.nom || '').toLowerCase()) ||
+          assignee.includes((currentUser.prenom || '').toLowerCase())
         ) {
           result.push({ task, project });
         }
@@ -320,7 +320,7 @@ export const FreelancerPortal: React.FC = () => {
       const statusLabels: Record<string, string> = { 'todo': 'À faire', 'en cours': 'En cours', 'fait': 'Terminé' };
       addTaskNote(projectId, taskId, {
         auteurId: currentUser.id,
-        auteurNom: `${currentUser.prenom} ${currentUser.nom}`,
+        auteurNom: `${currentUser.prenom || ''} ${currentUser.nom || ''}`.trim() || currentUser.email,
         texte: `Statut changé : ${statusLabels[prevTask.statut]} → ${statusLabels[statut]}`,
         date: new Date().toISOString(),
         type: 'statut_change',
@@ -347,7 +347,7 @@ export const FreelancerPortal: React.FC = () => {
         <div>
           <div className="flex items-center gap-3 mb-1">
             <h1 className="text-2xl font-bold text-white">
-              Bonjour, {currentUser.prenom} 👋
+              Bonjour, {currentUser.prenom || currentUser.nom || currentUser.email} 👋
             </h1>
             <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-accent-cyan/20 text-accent-cyan border border-accent-cyan/30">
               Freelancer

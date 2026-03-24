@@ -51,11 +51,11 @@ export const Sidebar: React.FC<{ onNavigate?: () => void }> = ({ onNavigate }) =
   });
 
   const initials = currentUser
-    ? `${currentUser.prenom[0]}${currentUser.nom[0]}`.toUpperCase()
+    ? `${(currentUser.prenom || 'O')[0]}${(currentUser.nom || 'A')[0]}`.toUpperCase()
     : 'OA';
 
   const displayName = currentUser
-    ? `${currentUser.prenom} ${currentUser.nom}`
+    ? `${currentUser.prenom || ''} ${currentUser.nom || ''}`.trim() || currentUser.email
     : 'Obsidian Agency';
 
   const roleLabel = currentUser ? (ROLE_LABELS[currentUser.role] ?? currentUser.role) : 'Admin';

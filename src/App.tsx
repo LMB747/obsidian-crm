@@ -44,8 +44,8 @@ const pageMap: Record<string, React.ComponentType> = {
 };
 
 // ─── Helper: sync user into Zustand store ──────────────────────────────────
-function syncToStore(email: string, nom: string, role: string, permissions?: string[]) {
-  useStore.getState().syncSessionUser({ email, role, nom, prenom: '', permissions });
+function syncToStore(email: string, nom: string, prenom: string, role: string, permissions?: string[]) {
+  useStore.getState().syncSessionUser({ email, role, nom, prenom, permissions });
 }
 
 // ─── App ────────────────────────────────────────────────────────────────────
@@ -61,7 +61,7 @@ const App: React.FC = () => {
       if (isSupabaseConfigured()) {
         const user = await getCurrentUser();
         if (user) {
-          syncToStore(user.email, `${user.prenom} ${user.nom}`.trim(), user.role, user.permissions);
+          syncToStore(user.email, user.nom || '', user.prenom || '', user.role, user.permissions);
           setReady(true);
           return;
         }
@@ -69,7 +69,7 @@ const App: React.FC = () => {
       // Try saved API session
       const saved = getSession();
       if (saved) {
-        syncToStore(saved.email, saved.nom, saved.role || 'admin');
+        syncToStore(saved.email, saved.nom || '', '', saved.role || 'admin');
       }
       setReady(true);
     })();
@@ -81,7 +81,7 @@ const App: React.FC = () => {
     if (isSupabaseConfigured()) {
       const result = await signIn(email, password);
       if (result.success && result.user) {
-        syncToStore(result.user.email, `${result.user.prenom} ${result.user.nom}`.trim(), result.user.role, result.user.permissions);
+        syncToStore(result.user.email, result.user.nom || '', result.user.prenom || '', result.user.role, result.user.permissions);
         useStore.getState()._audit('login', undefined, `Connexion Supabase — ${result.user.email}`);
         return { success: true };
       }
@@ -92,7 +92,7 @@ const App: React.FC = () => {
     try {
       const apiResult = await loginAPI(email, password);
       if (apiResult.success && apiResult.user) {
-        syncToStore(apiResult.user.email, apiResult.user.nom, apiResult.user.role || 'admin');
+        syncToStore(apiResult.user.email, apiResult.user.nom || '', '', apiResult.user.role || 'admin');
         useStore.getState()._audit('login', undefined, `Connexion API — ${apiResult.user.email}`);
         return { success: true };
       }
