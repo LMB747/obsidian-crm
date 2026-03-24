@@ -675,7 +675,7 @@ export const useStore = create<CRMStore>()(
         get().addProjectActivity(sessionData.projectId, {
           type: 'tache_temps',
           auteurId: get().currentUser?.id || 'system',
-          auteurNom: get().currentUser ? `${get().currentUser!.prenom} ${get().currentUser!.nom}` : 'Système',
+          auteurNom: get().currentUser ? `${get().currentUser!.prenom || ''} ${get().currentUser!.nom || ''}`.trim() || get().currentUser!.email : 'Système',
           titre: 'Temps enregistré',
           description: `${sessionData.dureeMinutes} min sur "${sessionData.taskTitre}"`,
           date: new Date().toISOString(),
@@ -710,8 +710,9 @@ export const useStore = create<CRMStore>()(
         window.location.reload();
       },
 
-      // Sync API session user into Zustand currentUser
-      syncSessionUser: ({ email, role, nom, prenom, permissions: supabasePermissions }: { email: string; role: string; nom: string; prenom: string; permissions?: string[] }) => {
+      // Sync session user (Supabase or API) into Zustand currentUser
+      // `id` is the Supabase auth UUID when available — critical for RLS
+      syncSessionUser: ({ id: supabaseId, email, role, nom, prenom, permissions: supabasePermissions }: { id?: string; email: string; role: string; nom: string; prenom: string; permissions?: string[] }) => {
         const permissionsByRole: Record<string, string[]> = {
           admin: ['dashboard','clients','freelancers','projects','worktracking','invoices','documents','snooze','calendar','analytics','media-buying','prospection','personal','settings','admin'],
           freelancer: ['dashboard','projects','worktracking','calendar','personal','settings'],
@@ -724,28 +725,34 @@ export const useStore = create<CRMStore>()(
 
         let finalPermissions: string[];
         if (supabasePermissions && supabasePermissions.length > 0) {
-          // Supabase has permissions — use them (source of truth)
           finalPermissions = supabasePermissions;
         } else if (existing?.permissions && existing.permissions.length > 0) {
-          // Fall back to existing local permissions
           finalPermissions = existing.permissions as string[];
         } else {
-          // Fall back to role defaults
           finalPermissions = defaultPermissions;
         }
 
-        let resolvedUserId: string;
+        // Use Supabase UUID if available, otherwise keep existing local ID, otherwise generate one
+        const resolvedUserId = supabaseId || existing?.id || uuidv4();
 
         if (existing) {
-          const updatedUser = { ...existing, role: role as any, permissions: finalPermissions as any, derniereConnexion: new Date().toISOString() };
+          // Update existing user — also update their ID to match Supabase if it changed
+          const updatedUser = {
+            ...existing,
+            id: resolvedUserId,
+            nom: nom || existing.nom,
+            prenom: prenom || existing.prenom,
+            role: role as any,
+            permissions: finalPermissions as any,
+            derniereConnexion: new Date().toISOString(),
+          };
           set(state => ({
             currentUser: updatedUser,
             users: state.users.map(u => u.email.toLowerCase() === email.toLowerCase() ? updatedUser : u),
           }));
-          resolvedUserId = existing.id;
         } else {
           const newUser: UserAccount = {
-            id: uuidv4(),
+            id: resolvedUserId,
             email,
             nom,
             prenom,
@@ -757,7 +764,6 @@ export const useStore = create<CRMStore>()(
             derniereConnexion: new Date().toISOString(),
           };
           set(state => ({ users: [...state.users, newUser], currentUser: newUser }));
-          resolvedUserId = newUser.id;
         }
 
         // Initialize user space & load data from Supabase (background)
@@ -837,7 +843,7 @@ export const useStore = create<CRMStore>()(
       },
 
       addUser: (userData) => {
-        const newUser: UserAccount = { ...userData, id: uuidv4(), dateCreation: new Date().toISOString().split('T')[0] };
+        const newUser: UserAccount = { ...userData, id: (userData as any).id || uuidv4(), dateCreation: new Date().toISOString().split('T')[0] };
         set(state => ({ users: [...state.users, newUser] }));
         get()._audit('create_user', 'admin', `${newUser.nom} (${newUser.email}) — rôle: ${newUser.role}`);
       },

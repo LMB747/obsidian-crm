@@ -459,10 +459,7 @@ export const Admin: React.FC = () => {
       return;
     }
 
-    // Create in local store
-    addUser(data);
-
-    // Create in Supabase via API (so admin doesn't get logged out)
+    // Create in Supabase via API first (so we get the real Supabase UUID)
     if (rawPassword) {
       try {
         const res = await fetch('/api/create-user', {
@@ -478,15 +475,21 @@ export const Admin: React.FC = () => {
           }),
         });
         const result = await res.json();
-        if (result.success) {
-          toast.success('Compte créé', `${data.prenom} ${data.nom} peut se connecter depuis n'importe quel navigateur`);
+        if (result.success && result.user?.id) {
+          // Use Supabase UUID as the local user ID
+          addUser({ ...data, id: result.user.id } as any);
+          toast.success('Compte créé', `${data.prenom || ''} ${data.nom || ''} peut se connecter depuis n'importe quel navigateur`);
         } else {
+          // Supabase failed — create local only
+          addUser(data);
           toast.warning('Compte local créé', result.error || 'Le compte ne fonctionnera que sur ce navigateur');
         }
       } catch {
+        addUser(data);
         toast.info('Compte local créé', 'API non disponible — le compte ne fonctionnera que sur ce navigateur');
       }
     } else {
+      addUser(data);
       toast.success('Compte créé localement');
     }
     setModalOpen(false);
