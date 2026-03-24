@@ -415,28 +415,38 @@ export const Admin: React.FC = () => {
     if (editUser?.id) {
       updateUser(editUser.id, data);
       toast.success('Utilisateur modifié');
-    } else {
-      // Create in local store
-      addUser(data);
+      setModalOpen(false);
+      return;
+    }
 
-      // Also create in Supabase so login works on ALL browsers
-      if (rawPassword) {
-        try {
-          const { inviteUser, isSupabaseConfigured } = await import('../lib/supabaseAuth');
-          if (isSupabaseConfigured()) {
-            const result = await inviteUser(data.email, rawPassword, data.nom, data.prenom, data.role);
-            if (result.success) {
-              toast.success('Compte créé', `${data.prenom} ${data.nom} — connexion possible depuis n'importe quel navigateur`);
-            } else {
-              toast.warning('Compte local créé', result.error || 'Supabase indisponible — connexion limitée à ce navigateur');
-            }
-          } else {
-            toast.info('Compte local créé', 'Configurez Supabase pour permettre la connexion multi-navigateur');
-          }
-        } catch {
-          toast.info('Compte local créé');
+    // Create in local store
+    addUser(data);
+
+    // Create in Supabase via API (so admin doesn't get logged out)
+    if (rawPassword) {
+      try {
+        const res = await fetch('/api/create-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: data.email,
+            password: rawPassword,
+            nom: data.nom,
+            prenom: data.prenom,
+            role: data.role,
+          }),
+        });
+        const result = await res.json();
+        if (result.success) {
+          toast.success('Compte créé', `${data.prenom} ${data.nom} peut se connecter depuis n'importe quel navigateur`);
+        } else {
+          toast.warning('Compte local créé', result.error || 'Le compte ne fonctionnera que sur ce navigateur');
         }
+      } catch {
+        toast.info('Compte local créé', 'API non disponible — le compte ne fonctionnera que sur ce navigateur');
       }
+    } else {
+      toast.success('Compte créé localement');
     }
     setModalOpen(false);
   };
