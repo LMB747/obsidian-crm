@@ -592,6 +592,12 @@ export const Documents: React.FC = () => {
         signLieu:           form.signLieu || undefined,
         signDate:           form.date || undefined,
         referentNom:        form.referentNom || undefined,
+        // Article 8 — Paiement
+        montantTTC:         contratPrestataires.reduce((s, p) => s + p.montantHT, 0) || undefined,
+        montantAcompte:     Math.round(contratPrestataires.reduce((s, p) => s + p.montantHT, 0) * 0.5) || undefined,
+        montantSolde:       Math.round(contratPrestataires.reduce((s, p) => s + p.montantHT, 0) * 0.5) || undefined,
+        dateAcompte:        form.date || undefined,
+        // SOW
         sowReferentClient:  form.clientRepresentant || form.clientNom || undefined,
         sowReferentPrestataires: form.referentNom || undefined,
         signataires:        signataires.length > 0 ? signataires : undefined,

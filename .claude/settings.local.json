@@ -23,7 +23,19 @@
       "Bash(python scripts/office/unpack.py \"C:\\\\Users\\\\benig\\\\Desktop\\\\Obsidian\\\\Audit CRM\\\\media-buying-spec.docx\" \"C:\\\\Users\\\\benig\\\\Desktop\\\\Obsidian\\\\Audit CRM\\\\mb-unpacked\")",
       "Read(//c/Users/benig/Desktop/**)",
       "Bash(python generate_scraper_guide.py)",
-      "Bash(node ./node_modules/typescript/bin/tsc --noEmit)"
+      "Bash(node ./node_modules/typescript/bin/tsc --noEmit)",
+      "Bash(npx netlify:*)",
+      "Bash(npx vite:*)",
+      "Bash(grep -r \"hunter\\\\|linkedin.*key\\\\|twitter.*key\\\\|google.*key\\\\|github.*key\" 'C:\\\\Users\\\\benig\\\\Desktop\\\\Snooze code\\\\src' --include=*.ts --include=*.tsx)",
+      "Bash(grep -r apiKeys[ 'C:\\\\Users\\\\benig\\\\Desktop\\\\Snooze code\\\\src' --include=*.ts --include=*.tsx)",
+      "Bash(grep -r \"hunter\\\\|linkedin.*proxy\\\\|twitter.*proxy\" 'C:\\\\Users\\\\benig\\\\Desktop\\\\Snooze code' --include=*.ts --include=*.tsx --include=*.md)",
+      "Bash(grep -r \"phantombuster\\\\|apify\" 'C:\\\\Users\\\\benig\\\\Desktop\\\\Snooze code\\\\src' --include=*.ts --include=*.tsx)",
+      "WebSearch",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs",
+      "Bash(python guide_prospection_ia.py)",
+      "Bash(ls -la \"/c/Users/benig/Desktop/Obsidian/\"*.html)",
+      "Bash(npx vercel:*)"
     ]
   }
 }

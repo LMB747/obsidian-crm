@@ -85,6 +85,11 @@ export interface ContratData {
   signLieu?: string;
   signDate?: string;
   referentNom?: string;
+  // Article 8 — Paiement
+  montantTTC?: number;
+  montantAcompte?: number;
+  montantSolde?: number;
+  dateAcompte?: string;
   // SOW Annexe 1
   sowReferentClient?: string;
   sowReferentPrestataires?: string;
@@ -472,19 +477,49 @@ export function injectContrat(doc: Document, data: ContratData) {
   if (preambuleFields[0]) setField(preambuleFields[0], data.projetNom);
   if (preambuleFields[1] && data.projetObjet) setField(preambuleFields[1], data.projetObjet);
 
-  // ── Dates dans les articles ───────────────────────────────────────────────
-  const allFields = doc.querySelectorAll('.art-body .field');
-  allFields.forEach((field) => {
-    const parentText = (field.closest('.art-body')?.textContent ?? '').toLowerCase();
-    if (parentText.includes('prend effet') || parentText.includes('commence') || parentText.includes('début')) {
-      if (!field.textContent?.includes('/')) {
-        setField(field, formatDate(data.dateDebut));
-      }
+  // ── Dates + montants dans les articles ───────────────────────────────────
+  const allArtBodies = doc.querySelectorAll('.art-body');
+  allArtBodies.forEach((body) => {
+    const text = body.textContent || '';
+    const fields = Array.from(body.querySelectorAll('.field'));
+
+    // Article 3 — DURÉE : 2 .field (dateDebut, dateFin)
+    if (text.includes('prend effet') || text.includes('DURÉE')) {
+      let dateIdx = 0;
+      fields.forEach((f) => {
+        if (f.textContent?.includes('_') || f.textContent?.includes('/')) {
+          if (dateIdx === 0 && data.dateDebut) { setContent(f, formatDate(data.dateDebut)); }
+          if (dateIdx === 1 && data.dateFin) { setContent(f, formatDate(data.dateFin)); }
+          dateIdx++;
+        }
+      });
     }
-    if (parentText.includes('termine') || parentText.includes('fin') || parentText.includes('expire')) {
-      if (!field.textContent?.includes('/')) {
-        setField(field, formatDate(data.dateFin));
-      }
+
+    // Article 8 — RÉMUNÉRATION / PAIEMENT : montants + dates
+    if (text.includes('Montant de la prestation') || text.includes('RÉMUNÉRATION')) {
+      fields.forEach((f) => {
+        const li = f.closest('li');
+        const liText = li?.textContent || '';
+        if (liText.includes('Montant de la prestation') && data.montantTTC) {
+          setContent(f, data.montantTTC.toLocaleString('fr-FR'));
+        } else if (liText.includes('Acompte') && liText.includes('%')) {
+          if (data.montantAcompte) setContent(f, data.montantAcompte.toLocaleString('fr-FR'));
+          // Date field inside the same li
+          const dateField = Array.from(li?.querySelectorAll('.field') || []).find(df => df !== f);
+          if (dateField && data.dateAcompte) setContent(dateField, formatDate(data.dateAcompte));
+        } else if (liText.includes('Solde') && data.montantSolde) {
+          setContent(f, data.montantSolde.toLocaleString('fr-FR'));
+        }
+      });
+    }
+
+    // Article 5/7 — Référent coordination
+    if (data.referentNom && (text.includes('référent') || text.includes('coordination'))) {
+      fields.forEach((f) => {
+        if (f.textContent?.includes('_')) {
+          setContent(f, data.referentNom!);
+        }
+      });
     }
   });
 
@@ -531,22 +566,6 @@ export function injectContrat(doc: Document, data: ContratData) {
     }
   }
 
-  // ── Référent coordination ────────────────────────────────────────────────
-  if (data.referentNom) {
-    const artBodies = doc.querySelectorAll('.art-body');
-    artBodies.forEach((body) => {
-      const text = body.textContent || '';
-      if (text.includes('référent') || text.includes('coordination')) {
-        const fields = body.querySelectorAll('.field');
-        fields.forEach((f) => {
-          if (f.textContent?.includes('____')) {
-            setContent(f, data.referentNom!);
-          }
-        });
-      }
-    });
-  }
-
   // ── Prestataires dans #liste-prestataires ──────────────────────────────────
   const listePrest = doc.getElementById('liste-prestataires');
   if (listePrest) {
@@ -587,30 +606,46 @@ export function injectContrat(doc: Document, data: ContratData) {
     }
   }
 
-  // ── SOW Annexe 1 — champs .field dans l'annexe-wrap ────────────────────────
+  // ── Annexes — injection par contexte ─────────────────────────────────────
   const annexeWraps = doc.querySelectorAll('.annexe-wrap');
   annexeWraps.forEach((wrap) => {
     const heading = wrap.querySelector('h2');
     const headingText = heading?.textContent || '';
 
-    // Annexe 1 — SOW fields
+    // ── Annexe 1 — SOW: Projet, Client, Référents ──────────────────────────
     if (headingText.includes('ANNEXE 1') || headingText.includes('SOW') || headingText.includes('STATEMENT')) {
-      const sowFields = wrap.querySelectorAll('.field');
-      let sowIdx = 0;
-      sowFields.forEach((f) => {
-        if (!f.textContent?.includes('____')) return;
-        switch (sowIdx) {
-          case 0: if (data.projetNom) setContent(f, data.projetNom); break;
-          case 1: if (data.clientNom) setContent(f, data.clientNom); break;
-          case 2: if (data.sowReferentClient || data.clientRepresentant) setContent(f, data.sowReferentClient || data.clientRepresentant); break;
-          case 3: if (data.sowReferentPrestataires || data.referentNom) setContent(f, data.sowReferentPrestataires || data.referentNom || ''); break;
+      // Target by parent <p> text content for robustness
+      const allPs = wrap.querySelectorAll('p');
+      allPs.forEach((p) => {
+        const pText = p.textContent || '';
+        const field = p.querySelector('.field');
+        if (!field) return;
+        if (pText.includes('Projet') || pText.includes('Campagne')) {
+          if (data.projetNom) setContent(field, data.projetNom);
+        } else if (pText.includes('Client') && !pText.includes('Référent')) {
+          if (data.clientNom) setContent(field, data.clientNom);
+        } else if (pText.includes('Référent Client')) {
+          setContent(field, data.sowReferentClient || data.clientRepresentant || '');
+        } else if (pText.includes('Référent Prestataires') || pText.includes('Coordination')) {
+          setContent(field, data.sowReferentPrestataires || data.referentNom || '');
         }
-        sowIdx++;
+      });
+
+      // SOW signature form: "soussigné(e) ____ agissant pour ____"
+      const sigBoxes = wrap.querySelectorAll('.signature-box');
+      sigBoxes.forEach((box) => {
+        const boxText = box.textContent || '';
+        const boxFields = Array.from(box.querySelectorAll('.field'));
+        if (boxText.includes('soussigné') && boxFields.length >= 2) {
+          if (data.clientRepresentant) setContent(boxFields[0], data.clientRepresentant);
+          if (data.clientNom) setContent(boxFields[1], data.clientNom);
+        }
       });
     }
 
-    // Annexe 2 — Total contrat
+    // ── Annexe 2 — Total contrat + signature forms ──────────────────────────
     if (headingText.includes('ANNEXE 2') || headingText.includes('PAIEMENT')) {
+      // Total contrat
       if (data.prestataires && data.prestataires.length > 0) {
         const totalContrat = data.prestataires.reduce((s, p) => s + p.montantHT, 0);
         const allPs = wrap.querySelectorAll('p');
@@ -620,6 +655,38 @@ export function injectContrat(doc: Document, data: ContratData) {
           }
         });
       }
+
+      // Annexe 2 signature forms: "soussigné(e) ____ agissant pour ____" + Nom/Fonction/Date
+      const sigBoxes = wrap.querySelectorAll('.signature-box');
+      sigBoxes.forEach((box) => {
+        const boxFields = Array.from(box.querySelectorAll('.field'));
+        const boxText = box.textContent || '';
+        if (boxText.includes('soussigné')) {
+          // [0] = soussigné name, [1] = agissant pour company
+          if (boxFields[0] && data.clientRepresentant) setContent(boxFields[0], data.clientRepresentant);
+          if (boxFields[1] && data.clientNom) setContent(boxFields[1], data.clientNom);
+        }
+        // Nom / Fonction / Date fields
+        const pFields = box.querySelectorAll('p .field');
+        pFields.forEach((f) => {
+          const pText = f.closest('p')?.textContent || '';
+          if (pText.includes('Nom') && pText.includes('Fonction') && pText.includes('Date')) {
+            // This is a "Nom : ___ Fonction : ___ Date : ___" line
+            const allF = Array.from(f.closest('p')?.querySelectorAll('.field') || []);
+            if (allF[0] && data.clientRepresentant) setContent(allF[0], data.clientRepresentant);
+            // allF[1] = Fonction (leave editable)
+            if (allF[2] && data.date) setContent(allF[2], formatDate(data.date));
+          }
+        });
+      });
+
+      // Date de début du projet
+      const allPs2 = wrap.querySelectorAll('p');
+      allPs2.forEach((p) => {
+        if (p.textContent?.includes('Date de début')) {
+          p.innerHTML = p.innerHTML.replace(/XX\/XX\/XXXX/, formatDate(data.dateDebut));
+        }
+      });
     }
   });
 
