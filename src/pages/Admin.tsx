@@ -5,7 +5,8 @@ import {
   FileText, FilePlus2, Moon, BarChart3, Settings,
   CheckCircle, XCircle, Search, Calendar, AlertTriangle,
   LogIn, LogOut, ChevronRight, X, Save, RefreshCw,
-  Building, Link2, Send, Copy, Globe, Mail
+  Building, Link2, Send, Copy, Globe, Mail,
+  TrendingUp, BookOpen, Crosshair
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useStore } from '../store/useStore';
@@ -27,6 +28,10 @@ const SECTION_CONFIG: { id: SectionPermission; label: string; icon: React.FC<{ c
   { id: 'documents',    label: 'Documents',       icon: FilePlus2 },
   { id: 'snooze',       label: 'Pay to Snooze',   icon: Moon },
   { id: 'analytics',    label: 'Analytiques',     icon: BarChart3 },
+  { id: 'media-buying', label: 'Media Buying',     icon: TrendingUp },
+  { id: 'prospection',  label: 'Prospection IA',   icon: Crosshair },
+  { id: 'calendar',     label: 'Calendrier',       icon: Calendar },
+  { id: 'personal',     label: 'Espace Perso',     icon: BookOpen },
   { id: 'settings',     label: 'Paramètres',      icon: Settings },
   { id: 'admin',        label: 'Administration',  icon: Shield },
 ];

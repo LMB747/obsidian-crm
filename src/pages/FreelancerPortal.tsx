@@ -3,7 +3,7 @@ import {
   Target, CheckCircle2, Clock, PlayCircle,
   AlertCircle, Calendar, TrendingUp, Briefcase,
   ChevronRight, ListTodo, MessageSquare, Send, ChevronDown, ChevronUp, X,
-  Crosshair, FileText, Euro, Timer
+  Crosshair, FileText, Euro, Timer, Link
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useStore } from '../store/useStore';
@@ -513,6 +513,44 @@ export const FreelancerPortal: React.FC = () => {
           ))}
         </div>
       )}
+
+      {/* ── Mes Ressources ──────────────────────────────────────────── */}
+      {(() => {
+        const allLinks = projects
+          .filter(p => p.freelancerIds?.includes(currentUser.freelancerId || currentUser.id))
+          .flatMap(p => (p.liensAvancement || [])
+            .filter(l => l.statutVisible && (l.freelancerIds.length === 0 || l.freelancerIds.includes(currentUser.freelancerId || currentUser.id)))
+            .map(l => ({ ...l, projectNom: p.nom }))
+          );
+
+        if (allLinks.length === 0) return null;
+
+        return (
+          <div className="mt-8">
+            <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-4">
+              <Link className="w-5 h-5 text-primary-400" />
+              Mes Ressources
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {allLinks.map(lien => (
+                <a key={lien.id} href={lien.url} target="_blank" rel="noopener noreferrer"
+                  className="bg-card border border-card-border rounded-xl p-4 hover:border-primary-500/30 transition-all group">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-8 h-8 rounded-lg bg-obsidian-700 flex items-center justify-center">
+                      <Link className="w-4 h-4 text-primary-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-white truncate group-hover:text-primary-300">{lien.titre}</p>
+                      <p className="text-[10px] text-slate-500">{lien.projectNom}</p>
+                    </div>
+                  </div>
+                  {lien.description && <p className="text-xs text-slate-400 line-clamp-2">{lien.description}</p>}
+                </a>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Objectives Section ──────────────────────────────────────── */}
       {assignedObjectives.length > 0 && (

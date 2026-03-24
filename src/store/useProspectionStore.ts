@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
 import { ProspectContact, ScrapeJob, ProspectSource, ProspectionFilter, EmailTemplate } from '../types/prospection';
+import { SecteurActivite } from '../types';
 import { useStore } from './useStore';
 import { startApifyRun, checkApifyRun, getApifyResults, PLATFORM_ACTORS } from '../lib/apifyService';
 import { launchPhantom, checkPhantomStatus, getPhantomResults } from '../lib/phantombusterService';
@@ -14,7 +15,7 @@ const defaultFilters: ProspectionFilter = {
   scoreMin: 0,
   scoreMax: 100,
   pays: [],
-  secteur: [],
+  secteurActivite: [],
   intentionAchat: [],
 };
 
@@ -223,6 +224,10 @@ export const useProspectionStore = create<ProspectionStore>()(
             notes: `[Importé depuis Prospection IA — source: ${prospect.source}]\n${prospect.notes}`,
             chiffreAffaires: 0,
             avatar: undefined,
+            secteurActivite: prospect.secteurActivite as SecteurActivite | undefined,
+            typePresence: prospect.typePresence,
+            localisation: prospect.ville ?? '',
+            siteWeb: prospect.website ?? '',
           });
         });
 
@@ -627,7 +632,7 @@ export function generateMockProspects(criteria: {
       ].filter(Boolean),
       notes: '',
       dateDecouvert: new Date().toISOString().split('T')[0],
-      secteur: criteria.sector || 'Non défini',
+      secteurActivite: criteria.sector || 'Non défini',
       tailleEntreprise: (['1-10', '11-50', '51-200'] as const)[Math.floor(Math.random() * 3)],
       besoinsDetectes: criteria.keywords.slice(0, 3),
       intentionAchat: isHot ? (score >= 85 ? 'forte' : 'moyenne') : 'faible',

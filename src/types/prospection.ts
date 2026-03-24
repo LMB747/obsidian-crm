@@ -1,3 +1,5 @@
+import type { SecteurActivite, TypePresence } from './index';
+
 export type ProspectSource =
   | 'linkedin' | 'twitter' | 'instagram' | 'facebook' | 'tiktok'
   | 'google_maps' | 'google_search' | 'youtube' | 'github'
@@ -44,7 +46,8 @@ export interface ProspectContact {
   dateDecouvert: string;
   dateEnrichi?: string;
   // Données enrichies IA
-  secteur?: string;
+  secteurActivite?: SecteurActivite | string;
+  typePresence?: TypePresence;
   tailleEntreprise?: string;   // '1-10' | '11-50' | '51-200' | '201-500' | '500+'
   chiffreAffaires?: string;
   description?: string;
@@ -88,6 +91,6 @@ export interface ProspectionFilter {
   scoreMin: number;
   scoreMax: number;
   pays: string[];
-  secteur: string[];
+  secteurActivite: string[];
   intentionAchat: string[];
 }

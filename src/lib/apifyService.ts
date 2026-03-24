@@ -306,7 +306,7 @@ export function computeProspectScore(p: ProspectContact): number {
   if (p.telephone) score += 10;
   if (p.linkedinUrl) score += 10;
   if (p.website) score += 5;
-  if (p.secteur) score += 5;
+  if (p.secteurActivite) score += 5;
   if (p.ville) score += 5;
   if (p.poste && p.poste !== 'Non renseigné') score += 5;
   if (p.entreprise && p.entreprise !== p.nom) score += 5;
@@ -338,7 +338,7 @@ function mapItemToProspect(item: Record<string, unknown>, platform: ProspectSour
         source: platform,
         score: 65, status: 'new', tags: [], notes: str(item.description),
         dateDecouvert: today(),
-        secteur: str(item.categoryName) || undefined,
+        secteurActivite: str(item.categoryName) || undefined,
         tailleEntreprise: 'TPE/PME', intentionAchat: 'faible',
       };
     }
@@ -361,7 +361,7 @@ function mapItemToProspect(item: Record<string, unknown>, platform: ProspectSour
         score: 75, status: 'new', tags: [],
         notes: str(item.summary || item.about || item.description),
         dateDecouvert: today(),
-        secteur: str(item.industry || item.field) || undefined,
+        secteurActivite: str(item.industry || item.field) || undefined,
         tailleEntreprise: str(item.companySize || item.staffCount) || 'TPE/PME',
         intentionAchat: 'moyenne',
       };
@@ -385,7 +385,7 @@ function mapItemToProspect(item: Record<string, unknown>, platform: ProspectSour
         score: 60, status: 'new', tags: ['instagram'],
         notes: str(item.biography || item.bio),
         dateDecouvert: today(),
-        secteur: str(item.category || item.businessCategory) || undefined,
+        secteurActivite: str(item.category || item.businessCategory) || undefined,
         tailleEntreprise: 'Indépendant',
         followers: typeof item.followersCount === 'number' ? item.followersCount : undefined,
         intentionAchat: 'faible',
@@ -449,7 +449,7 @@ function mapItemToProspect(item: Record<string, unknown>, platform: ProspectSour
         score: 60, status: 'new', tags: ['facebook'],
         notes: str(item.about || item.description),
         dateDecouvert: today(),
-        secteur: str(item.category) || undefined,
+        secteurActivite: str(item.category) || undefined,
         tailleEntreprise: 'TPE/PME',
         followers: typeof item.fans === 'number' ? item.fans : undefined,
         intentionAchat: 'faible',
@@ -492,7 +492,7 @@ function mapItemToProspect(item: Record<string, unknown>, platform: ProspectSour
         score: 70, status: 'new', tags: ['dev', 'github'],
         notes: str(item.bio),
         dateDecouvert: today(),
-        secteur: 'Technologie',
+        secteurActivite: 'Technologie',
         tailleEntreprise: 'Indépendant',
         technologies: Array.isArray(item.topRepositories)
           ? (item.topRepositories as Array<Record<string, Record<string, string>>>)
@@ -515,7 +515,7 @@ function mapItemToProspect(item: Record<string, unknown>, platform: ProspectSour
         score: 80, status: 'new', tags: ['startup', 'producthunt'],
         notes: str(item.description || item.tagline),
         dateDecouvert: today(),
-        secteur: 'Technologie',
+        secteurActivite: 'Technologie',
         tailleEntreprise: 'Startup',
         intentionAchat: 'forte',
         pays: 'France',
@@ -538,7 +538,7 @@ function mapItemToProspect(item: Record<string, unknown>, platform: ProspectSour
         score: 85, status: 'new', tags: ['startup', 'crunchbase'],
         notes: str(item.shortDescription || item.description),
         dateDecouvert: today(),
-        secteur: str(item.primaryRole || (Array.isArray(item.categories) ? (item.categories as string[]).join(', ') : '')) || undefined,
+        secteurActivite: str(item.primaryRole || (Array.isArray(item.categories) ? (item.categories as string[]).join(', ') : '')) || undefined,
         tailleEntreprise: str(item.numEmployeesEnum) || 'Startup',
         intentionAchat: 'forte',
       };
@@ -558,7 +558,7 @@ function mapItemToProspect(item: Record<string, unknown>, platform: ProspectSour
         score: 70, status: 'new', tags: ['freelance', 'malt'],
         notes: str(item.description || item.bio),
         dateDecouvert: today(),
-        secteur: 'Freelance',
+        secteurActivite: 'Freelance',
         tailleEntreprise: 'Indépendant',
         intentionAchat: 'moyenne',
       };
@@ -578,7 +578,7 @@ function mapItemToProspect(item: Record<string, unknown>, platform: ProspectSour
         score: 65, status: 'new', tags: ['freelance', 'upwork'],
         notes: str(item.description || item.overview),
         dateDecouvert: today(),
-        secteur: 'Freelance',
+        secteurActivite: 'Freelance',
         tailleEntreprise: 'Indépendant',
         intentionAchat: 'moyenne',
       };
@@ -599,7 +599,7 @@ function mapItemToProspect(item: Record<string, unknown>, platform: ProspectSour
         score: 60, status: 'new', tags: ['recrutement', 'indeed'],
         notes: str(item.jobDescription || item.description),
         dateDecouvert: today(),
-        secteur: str(item.sector || item.industry) || undefined,
+        secteurActivite: str(item.sector || item.industry) || undefined,
         tailleEntreprise: 'TPE/PME',
         intentionAchat: 'moyenne',
       };
@@ -620,7 +620,7 @@ function mapItemToProspect(item: Record<string, unknown>, platform: ProspectSour
         score: 65, status: 'new', tags: ['tech', 'startup', 'wtj'],
         notes: str(item.description || item.summary),
         dateDecouvert: today(),
-        secteur: str(item.sector || item.industry) || 'Technologie',
+        secteurActivite: str(item.sector || item.industry) || 'Technologie',
         tailleEntreprise: str(item.staffCount) || 'Startup',
         intentionAchat: 'moyenne',
       };
@@ -663,7 +663,7 @@ function mapItemToProspect(item: Record<string, unknown>, platform: ProspectSour
         score: 60, status: 'new', tags: ['design', 'créatif', 'behance'],
         notes: str(item.description || item.specialties),
         dateDecouvert: today(),
-        secteur: 'Design',
+        secteurActivite: 'Design',
         tailleEntreprise: 'Indépendant',
         intentionAchat: 'faible',
       };
@@ -683,7 +683,7 @@ function mapItemToProspect(item: Record<string, unknown>, platform: ProspectSour
         score: 60, status: 'new', tags: ['ui/ux', 'design', 'dribbble'],
         notes: str(item.bio || item.description),
         dateDecouvert: today(),
-        secteur: 'Design',
+        secteurActivite: 'Design',
         tailleEntreprise: 'Indépendant',
         intentionAchat: 'faible',
       };

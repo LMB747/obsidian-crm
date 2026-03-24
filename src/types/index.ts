@@ -64,6 +64,27 @@ export interface FreelancerPaiement {
   iban: string;
 }
 
+// ─── SECTEUR & PRÉSENCE ──────────────────────────────────────────────────────
+export type SecteurActivite =
+  | 'e-commerce'
+  | 'restaurant / food'
+  | 'immobilier'
+  | 'santé / bien-être'
+  | 'mode / beauté'
+  | 'tech / SaaS'
+  | 'finance / assurance'
+  | 'éducation / formation'
+  | 'tourisme / hôtellerie'
+  | 'retail / commerce'
+  | 'BTP / artisanat'
+  | 'media / entertainment'
+  | 'sport / fitness'
+  | 'juridique / conseil'
+  | 'automobile'
+  | 'autre';
+
+export type TypePresence = 'local' | 'web' | 'hybride';
+
 // ─── CLIENT ───────────────────────────────────────────────────────────────────
 export type ClientStatus = 'prospect' | 'actif' | 'inactif' | 'vip';
 export type ClientSource = 'référence' | 'réseaux sociaux' | 'cold outreach' | 'partenariat' | 'autre';
@@ -83,6 +104,10 @@ export interface Client {
   derniereActivite: string;
   chiffreAffaires: number;
   avatar?: string;
+  secteurActivite?: SecteurActivite;
+  typePresence?: TypePresence;
+  localisation?: string;
+  siteWeb?: string;
 }
 
 // ─── PROJECT ──────────────────────────────────────────────────────────────────
@@ -136,6 +161,25 @@ export interface Project {
   subCategories?: ProjectSubCategory[]; // sous-catégories
   livrables?: Livrable[];      // livrables attendus
   depensesProjet?: DepenseProjet[]; // dépenses enregistrées
+  liensAvancement?: LienAvancement[];
+}
+
+// ─── LIEN D'AVANCEMENT ──────────────────────────────────────────────────────
+export type LienAvancementType =
+  | 'notion' | 'figma' | 'google_drive' | 'github'
+  | 'trello' | 'asana' | 'miro' | 'loom' | 'autre';
+
+export interface LienAvancement {
+  id: string;
+  titre: string;
+  url: string;
+  type: LienAvancementType;
+  description?: string;
+  freelancerIds: string[];
+  projectId: string;
+  dateAjout: string;
+  ajoutePar: string;
+  statutVisible: boolean;
 }
 
 // ─── INVOICE ──────────────────────────────────────────────────────────────────
@@ -328,6 +372,11 @@ export interface CRMStore {
   addLivrable: (projectId: string, livrable: Omit<Livrable, 'id'>) => void;
   updateLivrable: (projectId: string, livrableId: string, updates: Partial<Livrable>) => void;
   deleteLivrable: (projectId: string, livrableId: string) => void;
+
+  // Actions — Liens d'avancement
+  addLienAvancement: (projectId: string, lien: Omit<LienAvancement, 'id' | 'dateAjout' | 'projectId'>) => void;
+  updateLienAvancement: (projectId: string, lienId: string, updates: Partial<LienAvancement>) => void;
+  deleteLienAvancement: (projectId: string, lienId: string) => void;
 
   // Actions — Dépenses Projet
   addDepenseProjet: (projectId: string, depense: Omit<DepenseProjet, 'id'>) => void;

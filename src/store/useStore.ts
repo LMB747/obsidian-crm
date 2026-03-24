@@ -385,6 +385,32 @@ export const useStore = create<CRMStore>()(
         get()._audit('delete_livrable', 'projects', `Livrable supprimé du projet`);
       },
 
+      // ─── Lien d'avancement Actions ────────────────────────────────────────
+      addLienAvancement: (projectId: string, lien: any) => {
+        const newLien = { ...lien, id: uuidv4(), dateAjout: new Date().toISOString(), projectId };
+        set(state => ({
+          projects: state.projects.map(p => p.id === projectId
+            ? { ...p, liensAvancement: [...(p.liensAvancement || []), newLien] }
+            : p),
+        }));
+        get()._audit('create_lien_avancement', 'projects', `${newLien.titre} dans ${get().projects.find(p => p.id === projectId)?.nom}`);
+      },
+      updateLienAvancement: (projectId: string, lienId: string, updates: any) => {
+        set(state => ({
+          projects: state.projects.map(p => p.id === projectId
+            ? { ...p, liensAvancement: (p.liensAvancement || []).map(l => l.id === lienId ? { ...l, ...updates } : l) }
+            : p),
+        }));
+      },
+      deleteLienAvancement: (projectId: string, lienId: string) => {
+        set(state => ({
+          projects: state.projects.map(p => p.id === projectId
+            ? { ...p, liensAvancement: (p.liensAvancement || []).filter(l => l.id !== lienId) }
+            : p),
+        }));
+        get()._audit('delete_lien_avancement', 'projects', 'Lien supprimé');
+      },
+
       // ─── Dépense Projet Actions ───────────────────────────────────────────
       addDepenseProjet: (projectId: string, depense: any) => {
         const newDepense = { ...depense, id: uuidv4() };

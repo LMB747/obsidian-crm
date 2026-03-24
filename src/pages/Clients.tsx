@@ -3,10 +3,11 @@ import {
   Plus, Search, Filter, Mail, Phone, Building2,
   MoreVertical, Edit2, Trash2, Eye, Star,
   TrendingUp, Users, UserCheck, UserX, Crown, Download, Upload,
-  FolderOpen, FileText, Clock, MessageSquare, Activity as ActivityIcon
+  FolderOpen, FileText, Clock, MessageSquare, Activity as ActivityIcon,
+  MapPin, Globe
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { Client, ClientStatus } from '../types';
+import { Client, ClientStatus, SecteurActivite, TypePresence } from '../types';
 import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { StatCard } from '../components/ui/StatCard';
@@ -25,6 +26,7 @@ const statusConfig: Record<ClientStatus, { label: string; variant: any; dot: str
 const emptyClient: Omit<Client, 'id' | 'dateCreation' | 'derniereActivite'> = {
   nom: '', entreprise: '', email: '', telephone: '', adresse: '',
   statut: 'prospect', source: 'autre', tags: [], notes: '', chiffreAffaires: 0,
+  secteurActivite: undefined, typePresence: undefined, localisation: '', siteWeb: '',
 };
 
 // ─── Client Activity Timeline ─────────────────────────────────────────────────
@@ -147,6 +149,8 @@ export const Clients: React.FC = () => {
   const [viewingClient, setViewingClient] = useState<Client | null>(null);
   const [formData, setFormData] = useState(emptyClient);
   const [statusFilter, setStatusFilter] = useState<ClientStatus | 'tous'>('tous');
+  const [sectorFilter, setSectorFilter] = useState<string>('');
+  const [presenceFilter, setPresenceFilter] = useState<string>('');
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [viewTab, setViewTab] = useState<'info' | 'activite'>('info');
@@ -165,8 +169,10 @@ export const Clients: React.FC = () => {
       );
     }
     if (statusFilter !== 'tous') list = list.filter(c => c.statut === statusFilter);
+    if (sectorFilter) list = list.filter(c => c.secteurActivite === sectorFilter);
+    if (presenceFilter) list = list.filter(c => c.typePresence === presenceFilter);
     return list.sort((a, b) => b.chiffreAffaires - a.chiffreAffaires);
-  }, [clients, debouncedSearchQuery, statusFilter]);
+  }, [clients, debouncedSearchQuery, statusFilter, sectorFilter, presenceFilter]);
 
   const stats = useMemo(() => ({
     total: clients.length,
@@ -183,7 +189,7 @@ export const Clients: React.FC = () => {
 
   const openEdit = (client: Client) => {
     setEditingClient(client);
-    setFormData({ nom: client.nom, entreprise: client.entreprise, email: client.email, telephone: client.telephone, adresse: client.adresse, statut: client.statut, source: client.source, tags: client.tags, notes: client.notes, chiffreAffaires: client.chiffreAffaires });
+    setFormData({ nom: client.nom, entreprise: client.entreprise, email: client.email, telephone: client.telephone, adresse: client.adresse, statut: client.statut, source: client.source, tags: client.tags, notes: client.notes, chiffreAffaires: client.chiffreAffaires, secteurActivite: client.secteurActivite, typePresence: client.typePresence, localisation: client.localisation || '', siteWeb: client.siteWeb || '' });
     setIsModalOpen(true);
     setActiveMenu(null);
   };
@@ -277,6 +283,33 @@ export const Clients: React.FC = () => {
               </span>
             </button>
           ))}
+          <select value={sectorFilter} onChange={e => setSectorFilter(e.target.value)}
+            className="bg-obsidian-700 border border-card-border text-white text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary-500">
+            <option value="">Tous les secteurs</option>
+            <option value="e-commerce">E-commerce</option>
+            <option value="restaurant / food">Restaurant / Food</option>
+            <option value="immobilier">Immobilier</option>
+            <option value="santé / bien-être">Santé / Bien-être</option>
+            <option value="mode / beauté">Mode / Beauté</option>
+            <option value="tech / SaaS">Tech / SaaS</option>
+            <option value="finance / assurance">Finance / Assurance</option>
+            <option value="éducation / formation">Éducation / Formation</option>
+            <option value="tourisme / hôtellerie">Tourisme / Hôtellerie</option>
+            <option value="retail / commerce">Retail / Commerce</option>
+            <option value="BTP / artisanat">BTP / Artisanat</option>
+            <option value="media / entertainment">Media / Entertainment</option>
+            <option value="sport / fitness">Sport / Fitness</option>
+            <option value="juridique / conseil">Juridique / Conseil</option>
+            <option value="automobile">Automobile</option>
+            <option value="autre">Autre</option>
+          </select>
+          <select value={presenceFilter} onChange={e => setPresenceFilter(e.target.value)}
+            className="bg-obsidian-700 border border-card-border text-white text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary-500">
+            <option value="">Toute présence</option>
+            <option value="local">Local</option>
+            <option value="web">Web</option>
+            <option value="hybride">Hybride</option>
+          </select>
         </div>
         <div className="flex items-center gap-2">
           <input ref={fileInputRef} type="file" accept=".csv" onChange={handleFileUpload} className="hidden" />
@@ -345,6 +378,17 @@ export const Clients: React.FC = () => {
                             <div className="flex items-center gap-1.5">
                               <Building2 className="w-3 h-3 text-slate-500" />
                               <p className="text-slate-400 text-xs">{client.entreprise}</p>
+                              {client.secteurActivite && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary-500/10 border border-primary-500/30 text-primary-400 font-medium ml-1">{client.secteurActivite}</span>
+                              )}
+                              {client.typePresence === 'local' && <span title="Local"><MapPin className="w-3 h-3 text-amber-400 ml-1" /></span>}
+                              {client.typePresence === 'web' && <span title="Web"><Globe className="w-3 h-3 text-cyan-400 ml-1" /></span>}
+                              {client.typePresence === 'hybride' && (
+                                <span className="inline-flex items-center" title="Hybride">
+                                  <MapPin className="w-3 h-3 text-amber-400 ml-1" />
+                                  <Globe className="w-3 h-3 text-cyan-400" />
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -442,6 +486,45 @@ export const Clients: React.FC = () => {
               </select>
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Secteur d'activité</label>
+              <select value={formData.secteurActivite || ''} onChange={(e) => setFormData(p => ({ ...p, secteurActivite: (e.target.value || undefined) as any }))} className="w-full bg-obsidian-700 border border-card-border text-white text-sm rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                <option value="">— Aucun —</option>
+                <option value="e-commerce">E-commerce</option>
+                <option value="restaurant / food">Restaurant / Food</option>
+                <option value="immobilier">Immobilier</option>
+                <option value="santé / bien-être">Santé / Bien-être</option>
+                <option value="mode / beauté">Mode / Beauté</option>
+                <option value="tech / SaaS">Tech / SaaS</option>
+                <option value="finance / assurance">Finance / Assurance</option>
+                <option value="éducation / formation">Éducation / Formation</option>
+                <option value="tourisme / hôtellerie">Tourisme / Hôtellerie</option>
+                <option value="retail / commerce">Retail / Commerce</option>
+                <option value="BTP / artisanat">BTP / Artisanat</option>
+                <option value="media / entertainment">Media / Entertainment</option>
+                <option value="sport / fitness">Sport / Fitness</option>
+                <option value="juridique / conseil">Juridique / Conseil</option>
+                <option value="automobile">Automobile</option>
+                <option value="autre">Autre</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Type de présence</label>
+              <select value={formData.typePresence || ''} onChange={(e) => setFormData(p => ({ ...p, typePresence: (e.target.value || undefined) as any }))} className="w-full bg-obsidian-700 border border-card-border text-white text-sm rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                <option value="">— Aucun —</option>
+                <option value="local">Local</option>
+                <option value="web">Web</option>
+                <option value="hybride">Hybride</option>
+              </select>
+            </div>
+          </div>
+          {formData.typePresence && formData.typePresence !== 'web' && (
+            <InputField label="Localisation" value={formData.localisation || ''} onChange={(e: any) => setFormData(p => ({ ...p, localisation: e.target.value }))} />
+          )}
+          {formData.typePresence && formData.typePresence !== 'local' && (
+            <InputField label="Site web" type="url" value={formData.siteWeb || ''} onChange={(e: any) => setFormData(p => ({ ...p, siteWeb: e.target.value }))} />
+          )}
           <div>
             <label className="block text-xs font-semibold text-slate-400 mb-1.5">CA estimé (€)</label>
             <input type="number" value={formData.chiffreAffaires} onChange={(e) => setFormData(p => ({ ...p, chiffreAffaires: Number(e.target.value) }))} className="w-full bg-obsidian-700 border border-card-border text-white text-sm rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-primary-500" />
@@ -511,6 +594,32 @@ export const Clients: React.FC = () => {
                     <p className="text-accent-green text-lg font-bold">{viewingClient.chiffreAffaires.toLocaleString('fr-FR')} €</p>
                   </div>
                 </div>
+                {(viewingClient.secteurActivite || viewingClient.typePresence) && (
+                  <div className="grid grid-cols-2 gap-4">
+                    {viewingClient.secteurActivite && (
+                      <div className="bg-obsidian-700 rounded-xl p-4 border border-card-border">
+                        <p className="text-slate-400 text-xs mb-1">Secteur d'activité</p>
+                        <p className="text-white text-sm font-medium">{viewingClient.secteurActivite}</p>
+                      </div>
+                    )}
+                    {viewingClient.typePresence && (
+                      <div className="bg-obsidian-700 rounded-xl p-4 border border-card-border">
+                        <p className="text-slate-400 text-xs mb-1">Présence</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {viewingClient.typePresence === 'local' && <MapPin className="w-4 h-4 text-amber-400" />}
+                          {viewingClient.typePresence === 'web' && <Globe className="w-4 h-4 text-cyan-400" />}
+                          {viewingClient.typePresence === 'hybride' && (
+                            <>
+                              <MapPin className="w-4 h-4 text-amber-400" />
+                              <Globe className="w-4 h-4 text-cyan-400" />
+                            </>
+                          )}
+                          <span className="text-white text-sm font-medium capitalize">{viewingClient.typePresence}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {viewingClient.adresse && (
                   <div className="bg-obsidian-700 rounded-xl p-4 border border-card-border">
                     <p className="text-slate-400 text-xs mb-1">Adresse</p>

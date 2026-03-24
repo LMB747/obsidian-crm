@@ -6,10 +6,11 @@ import {
   Edit2, Trash2, Target, ArrowUpRight, BarChart3,
   List, Columns, AlertTriangle, Download, Search, X,
   Activity, MessageSquare, FolderPlus, ArrowRight, Flag, FileText,
-  Crosshair, Layers, Tag, Package, Wallet, GanttChart
+  Crosshair, Layers, Tag, Package, Wallet, GanttChart,
+  Link, ExternalLink, Pen, HardDrive, Github, Columns3, Video
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { Project, ProjectStatus, Task, Freelancer, Objective, ProjectSubCategory, Livrable, LivrableType, LivrableStatut, DepenseProjet } from '../types';
+import { Project, ProjectStatus, Task, Freelancer, Objective, ProjectSubCategory, Livrable, LivrableType, LivrableStatut, DepenseProjet, LienAvancementType } from '../types';
 import { Badge } from '../components/ui/Badge';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { Modal } from '../components/ui/Modal';
@@ -48,6 +49,18 @@ const kanbanColumns: { statut: ProjectStatus; borderColor: string; titleColor: s
 ];
 
 const INPUT_CLASS = 'w-full bg-obsidian-700 border border-card-border text-white text-sm rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 transition-all';
+
+const LIEN_ICONS: Record<string, { icon: any; color: string }> = {
+  notion: { icon: FileText, color: 'text-slate-300' },
+  figma: { icon: Pen, color: 'text-pink-400' },
+  google_drive: { icon: HardDrive, color: 'text-blue-400' },
+  github: { icon: Github, color: 'text-slate-300' },
+  trello: { icon: Columns3, color: 'text-blue-400' },
+  asana: { icon: Target, color: 'text-pink-500' },
+  miro: { icon: Layers, color: 'text-amber-400' },
+  loom: { icon: Video, color: 'text-violet-400' },
+  autre: { icon: Link, color: 'text-slate-400' },
+};
 
 // ─── ProjectTimeline ─────────────────────────────────────────────────────────
 const ProjectTimeline: React.FC<{ project: Project }> = ({ project }) => {
@@ -263,7 +276,7 @@ const ProjectTeam: React.FC<{
 
 export const Projects: React.FC = () => {
   const store = useStore();
-  const { projects, updateProject, deleteProject, updateTask, addTask, deleteTask, searchQuery, clients, addProject, addFreelancerToProject, removeFreelancerFromProject, freelancers, addObjective, updateObjective, deleteObjective, addSubCategory, deleteSubCategory } = store;
+  const { projects, updateProject, deleteProject, updateTask, addTask, deleteTask, searchQuery, clients, addProject, addFreelancerToProject, removeFreelancerFromProject, freelancers, addObjective, updateObjective, deleteObjective, addSubCategory, deleteSubCategory, addLienAvancement, deleteLienAvancement } = store;
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [expandedProject, setExpandedProject] = useState<string | null>(projects[0]?.id || null);
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'tous'>('tous');
@@ -272,7 +285,11 @@ export const Projects: React.FC = () => {
   const [addTaskModal, setAddTaskModal] = useState<string | null>(null);
   const [newTask, setNewTask] = useState({ titre: '', description: '', assigneA: '', assigneAIds: [] as string[], dateEcheance: '', heuresEstimees: 8, priorite: 'normale' as Task['priorite'], statut: 'todo' as Task['statut'], tags: [] as string[] });
   const [taskFreelancerFilter, setTaskFreelancerFilter] = useState<string>('all');
-  const [projectTab, setProjectTab] = useState<Record<string, 'tasks' | 'equipe' | 'objectives' | 'timeline' | 'livrables' | 'budget'>>({});
+  const [projectTab, setProjectTab] = useState<Record<string, 'tasks' | 'equipe' | 'objectives' | 'timeline' | 'livrables' | 'budget' | 'liens'>>({});
+
+  // Lien d'avancement modal
+  const [lienModalOpen, setLienModalOpen] = useState<string | null>(null);
+  const [newLien, setNewLien] = useState({ titre: '', url: '', type: 'autre' as LienAvancementType, description: '', statutVisible: true, freelancerIds: [] as string[] });
 
   // Objectives modal
   const [addObjModal, setAddObjModal] = useState<string | null>(null);
@@ -802,6 +819,7 @@ export const Projects: React.FC = () => {
                         { id: 'equipe', label: 'Équipe', icon: Users },
                         { id: 'livrables', label: 'Livrables', icon: Package },
                         { id: 'budget', label: 'Budget', icon: Wallet },
+                        { id: 'liens', label: 'Liens Prestataires', icon: Link },
                         { id: 'timeline', label: 'Timeline', icon: Activity },
                       ] as const).map(tab => (
                         <button
@@ -1182,6 +1200,49 @@ export const Projects: React.FC = () => {
                         </div>
                       );
                     })()}
+
+                    {/* Liens d'avancement tab */}
+                    {(projectTab[project.id] ?? 'tasks') === 'liens' && (
+                      <div className="p-5 space-y-4">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                            <Link className="w-4 h-4 text-primary-400" />
+                            Liens d'avancement
+                          </h3>
+                          <button onClick={() => setLienModalOpen(project.id)} className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-500/20 text-primary-300 rounded-lg text-xs font-semibold hover:bg-primary-500/30 transition-all">
+                            <Plus className="w-3.5 h-3.5" />
+                            Ajouter
+                          </button>
+                        </div>
+
+                        {(project.liensAvancement || []).length === 0 ? (
+                          <p className="text-slate-500 text-sm text-center py-8">Aucun lien partagé</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {(project.liensAvancement || []).map(lien => {
+                              const iconConfig = LIEN_ICONS[lien.type] || LIEN_ICONS.autre;
+                              return (
+                                <div key={lien.id} className="flex items-center gap-3 p-3 bg-obsidian-700 border border-card-border rounded-xl hover:border-primary-500/30 transition-all">
+                                  <div className={`w-8 h-8 rounded-lg bg-obsidian-800 flex items-center justify-center ${iconConfig.color}`}>
+                                    <iconConfig.icon className="w-4 h-4" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-white truncate">{lien.titre}</p>
+                                    <p className="text-xs text-slate-500 truncate">{lien.url}</p>
+                                  </div>
+                                  <a href={lien.url} target="_blank" rel="noopener noreferrer" className="text-primary-400 hover:text-primary-300 transition-colors">
+                                    <ExternalLink className="w-4 h-4" />
+                                  </a>
+                                  <button onClick={() => deleteLienAvancement(project.id, lien.id)} className="text-slate-500 hover:text-red-400 transition-colors">
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Tasks & Milestones tab */}
                     {(projectTab[project.id] ?? 'tasks') === 'tasks' && (
@@ -1970,6 +2031,106 @@ export const Projects: React.FC = () => {
             </div>
           );
         })()}
+      </Modal>
+
+      {/* ── Add Lien d'avancement Modal ──────────────────────────────── */}
+      <Modal isOpen={!!lienModalOpen} onClose={() => { setLienModalOpen(null); setNewLien({ titre: '', url: '', type: 'autre', description: '', statutVisible: true, freelancerIds: [] }); }} title="Nouveau lien d'avancement" size="md">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 mb-1.5">Titre <span className="text-accent-red">*</span></label>
+            <input
+              value={newLien.titre}
+              onChange={e => setNewLien(l => ({ ...l, titre: e.target.value }))}
+              className={INPUT_CLASS}
+              placeholder="Ex: Maquette Figma, Repo GitHub..."
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 mb-1.5">URL <span className="text-accent-red">*</span></label>
+            <input
+              type="url"
+              value={newLien.url}
+              onChange={e => setNewLien(l => ({ ...l, url: e.target.value }))}
+              className={INPUT_CLASS}
+              placeholder="https://..."
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Type</label>
+              <select
+                value={newLien.type}
+                onChange={e => setNewLien(l => ({ ...l, type: e.target.value as LienAvancementType }))}
+                className={INPUT_CLASS}
+              >
+                <option value="notion">Notion</option>
+                <option value="figma">Figma</option>
+                <option value="google_drive">Google Drive</option>
+                <option value="github">GitHub</option>
+                <option value="trello">Trello</option>
+                <option value="asana">Asana</option>
+                <option value="miro">Miro</option>
+                <option value="loom">Loom</option>
+                <option value="autre">Autre</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Visible prestataires</label>
+              <button
+                onClick={() => setNewLien(l => ({ ...l, statutVisible: !l.statutVisible }))}
+                className={clsx(
+                  'w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-sm transition-all',
+                  newLien.statutVisible
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                    : 'bg-obsidian-700 border-card-border text-slate-500'
+                )}
+              >
+                <span>{newLien.statutVisible ? 'Visible' : 'Masqué'}</span>
+                <div className={clsx('w-8 h-4 rounded-full transition-all relative', newLien.statutVisible ? 'bg-emerald-500' : 'bg-slate-600')}>
+                  <div className={clsx('absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all', newLien.statutVisible ? 'left-4' : 'left-0.5')} />
+                </div>
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 mb-1.5">Description (optionnel)</label>
+            <textarea
+              value={newLien.description}
+              onChange={e => setNewLien(l => ({ ...l, description: e.target.value }))}
+              className={INPUT_CLASS}
+              rows={2}
+              placeholder="Description du lien..."
+            />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={() => { setLienModalOpen(null); setNewLien({ titre: '', url: '', type: 'autre', description: '', statutVisible: true, freelancerIds: [] }); }}
+              className="flex-1 py-2.5 rounded-xl border border-card-border text-slate-400 text-sm font-medium hover:bg-card-hover hover:text-white transition-all"
+            >
+              Annuler
+            </button>
+            <button
+              onClick={() => {
+                if (!lienModalOpen || !newLien.titre.trim() || !newLien.url.trim()) return;
+                addLienAvancement(lienModalOpen, {
+                  titre: newLien.titre,
+                  url: newLien.url,
+                  type: newLien.type,
+                  description: newLien.description || undefined,
+                  statutVisible: newLien.statutVisible,
+                  freelancerIds: newLien.freelancerIds,
+                  ajoutePar: '',
+                });
+                setLienModalOpen(null);
+                setNewLien({ titre: '', url: '', type: 'autre', description: '', statutVisible: true, freelancerIds: [] });
+              }}
+              disabled={!newLien.titre.trim() || !newLien.url.trim()}
+              className="flex-1 py-2.5 rounded-xl bg-gradient-primary text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+            >
+              Ajouter le lien
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

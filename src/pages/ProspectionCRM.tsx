@@ -475,10 +475,26 @@ const ContactDetailModal: React.FC<ContactDetailModalProps> = ({
             {/* Right */}
             <div className="space-y-4">
               <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Données Enrichies IA</h3>
-              {prospect.secteur && (
+              {prospect.secteurActivite && (
                 <div>
                   <span className="text-xs text-slate-500">Secteur</span>
-                  <p className="text-sm text-white mt-0.5">{prospect.secteur}</p>
+                  <p className="text-sm text-white mt-0.5">{prospect.secteurActivite}</p>
+                </div>
+              )}
+              {prospect.typePresence && (
+                <div>
+                  <span className="text-xs text-slate-500">Présence</span>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {prospect.typePresence === 'local' && <Building2 className="w-3.5 h-3.5 text-amber-400" />}
+                    {prospect.typePresence === 'web' && <Globe className="w-3.5 h-3.5 text-cyan-400" />}
+                    {prospect.typePresence === 'hybride' && (
+                      <>
+                        <Building2 className="w-3.5 h-3.5 text-amber-400" />
+                        <Globe className="w-3.5 h-3.5 text-cyan-400" />
+                      </>
+                    )}
+                    <span className="text-sm text-white capitalize">{prospect.typePresence}</span>
+                  </div>
                 </div>
               )}
               {prospect.tailleEntreprise && (
@@ -828,7 +844,7 @@ const TabProspects: React.FC = () => {
       escape(p.prenom), escape(p.nom), escape(p.entreprise), escape(p.poste),
       escape(p.email), escape(p.telephone), escape(p.website),
       escape(p.ville), escape(p.pays), escape(p.source), String(p.score), escape(p.status),
-      escape(p.intentionAchat), escape(p.secteur), escape(p.tailleEntreprise),
+      escape(p.intentionAchat), escape(p.secteurActivite), escape(p.tailleEntreprise),
       escape(p.linkedinUrl), escape(p.dateDecouvert),
     ].join(','));
 
@@ -1025,7 +1041,7 @@ const TabProspects: React.FC = () => {
               />
             </div>
             <button
-              onClick={() => setFilters({ sources: [], status: [], scoreMin: 0, scoreMax: 100, pays: [], secteur: [], intentionAchat: [] })}
+              onClick={() => setFilters({ sources: [], status: [], scoreMin: 0, scoreMax: 100, pays: [], secteurActivite: [], intentionAchat: [] })}
               className="text-xs text-slate-500 hover:text-white transition-colors"
             >
               Réinitialiser les filtres
@@ -1220,13 +1236,13 @@ const TabEnrichissement: React.FC = () => {
     }
 
     // Secteur déduit des tags ou de la source
-    if (!p.secteur) {
+    if (!p.secteurActivite) {
       const sourceMap: Record<string, string> = {
         github: 'Technologie', producthunt: 'Technologie', crunchbase: 'Startup',
         malt: 'Freelance', upwork: 'Freelance', behance: 'Design', dribbble: 'Design',
         indeed: 'Recrutement', welcome_to_the_jungle: 'Technologie',
       };
-      updates.secteur = sourceMap[p.source] || undefined;
+      updates.secteurActivite = sourceMap[p.source] || undefined;
     }
 
     return updates;
@@ -1379,7 +1395,7 @@ const TabEnrichissement: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-3 ml-4 flex-shrink-0">
-                  {p.secteur && <span className="text-xs text-slate-400 hidden sm:block">{p.secteur}</span>}
+                  {p.secteurActivite && <span className="text-xs text-slate-400 hidden sm:block">{p.secteurActivite}</span>}
                   {p.intentionAchat && (
                     <span className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium ${INTENTION_CONFIG[p.intentionAchat].color} ${INTENTION_CONFIG[p.intentionAchat].bg}`}>
                       {INTENTION_CONFIG[p.intentionAchat].label}

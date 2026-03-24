@@ -253,7 +253,7 @@ function mapPBItemToProspect(item: Record<string, unknown>, platform: ProspectSo
     tags: ['phantombuster'],
     notes: str(item.description || item.summary || item.bio || item.about),
     dateDecouvert: new Date().toISOString().split('T')[0],
-    secteur: str(item.industry || item.sector || item.category) || undefined,
+    secteurActivite: str(item.industry || item.sector || item.category) || undefined,
     tailleEntreprise: str(item.companySize || item.staffCount || item.employeeCount) || 'TPE/PME',
     followers: typeof item.followersCount === 'number' ? item.followersCount
       : typeof item.followers === 'number' ? item.followers : undefined,

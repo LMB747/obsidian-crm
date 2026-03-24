@@ -840,6 +840,11 @@ const CampaignsTab: React.FC<{ campaigns: Campaign[] }> = ({ campaigns }) => {
                     <td className="px-4 py-3">
                       <p className="text-white font-medium">{c.name}</p>
                       <div className="flex flex-wrap gap-1 mt-1">
+                        {c.clientNom && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary-500/15 text-primary-300 border border-primary-500/25 font-medium">
+                            {c.clientNom}
+                          </span>
+                        )}
                         {c.platforms.map((p) => <PlatformBadge key={p} platform={p} />)}
                       </div>
                     </td>
