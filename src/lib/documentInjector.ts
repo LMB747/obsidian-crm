@@ -274,7 +274,63 @@ export function injectFacture(doc: Document, data: FactureData) {
       ].join('');
       table1.appendChild(tr);
     });
-    try { (doc.defaultView as any)?.refreshLayout?.(); } catch { /* ignoré */ }
+
+    // Sync the template's internal rows array so render() uses injected data
+    const win = doc.defaultView as any;
+    if (win) {
+      win.rows = data.items.map(item => ({
+        desc: item.description,
+        qty: String(item.quantite),
+        prix: formatEuro(item.prixUnitaire),
+        total: formatEuro(item.total),
+      }));
+    }
+  }
+
+  // Override the template's appendSummary to use injected values
+  const win = doc.defaultView as any;
+  if (win) {
+    const acompteDisplay = data.acompte && data.acompte > 0;
+    const acompteLabel = data.acomptePaye ? '✓ Acompte versé' : '⬦ Acompte à régler';
+    const resteVal = data.resteAPayer ?? Math.round((data.montantTTC - (data.acompte || 0)) * 100) / 100;
+
+    win.appendSummary = function(body: any) {
+      body.querySelectorAll('.totals-block,.payment-info,.legal-mentions').forEach((e: any) => e.remove());
+
+      const totals = doc.createElement('div');
+      totals.className = 'totals-block';
+      let html = `
+        <div class="total-row"><span>Total HT</span><span contenteditable="true">${formatEuro(data.montantHT)}</span></div>
+        <div class="total-row"><span>TVA (${data.tva > 0 ? Math.round(data.tva / Math.max(data.montantHT, 1) * 100) : 0}%)</span><span contenteditable="true">${formatEuro(data.tva)}</span></div>
+        <div class="total-row ttc"><span>MONTANT TTC</span><span contenteditable="true">${formatEuro(data.montantTTC)}</span></div>`;
+      if (acompteDisplay) {
+        html += `<div class="total-row paid"><span>${acompteLabel}</span><span contenteditable="true">${formatEuro(data.acompte!)}</span></div>`;
+        html += `<div class="total-row due"><span>⬦ Reste à payer</span><span contenteditable="true">${formatEuro(resteVal)}</span></div>`;
+      }
+      totals.innerHTML = html;
+      body.appendChild(totals);
+
+      const pi = doc.createElement('div');
+      pi.className = 'payment-info';
+      const iban = data.provider?.iban ? data.provider.iban.replace(/(.{4})/g, '$1 ').trim() : 'FR76 XXXX XXXX XXXX XXXX';
+      const bic = data.provider?.bic || '—';
+      const echeanceText = data.echeanceJours ? `${data.echeanceJours} jours à réception` : '30 jours à réception';
+      pi.innerHTML = `
+        <div class="payment-info-title">Modalités de Paiement</div>
+        <span contenteditable="true">Virement bancaire — IBAN : ${iban} — BIC : ${bic}</span><br>
+        <span contenteditable="true">Échéance : ${echeanceText}</span>`;
+      body.appendChild(pi);
+
+      if (data.notes) {
+        const lm = doc.createElement('div');
+        lm.className = 'legal-mentions';
+        lm.innerHTML = `<span contenteditable="true">${escapeHtml(data.notes)}</span>`;
+        body.appendChild(lm);
+      }
+    };
+
+    // Re-run render with the overridden appendSummary
+    try { win.render?.(); } catch { /* ignoré */ }
   }
 
   // ── Totaux ────────────────────────────────────────────────────────────────
@@ -398,10 +454,59 @@ export function injectDevis(doc: Document, data: DevisData) {
       ].join('');
       table1.appendChild(tr);
     });
-    try { (doc.defaultView as any)?.refreshLayout?.(); } catch { /* ignoré */ }
+
+    // Sync the template's internal rows array
+    const win = doc.defaultView as any;
+    if (win) {
+      win.rows = data.items.map(item => ({
+        desc: item.description,
+        tarif: item.offert ? 'Offert' : item.tarif,
+      }));
+    }
   }
 
-  // ── Totaux ────────────────────────────────────────────────────────────────
+  // Override the template's appendSummary so render() uses injected values
+  const winD = doc.defaultView as any;
+  if (winD) {
+    const acompteDisplay = data.acompte && data.acompte > 0;
+    const acomptePercent = data.montantTTC > 0 && data.acompte ? Math.round(data.acompte / data.montantTTC * 100) : 0;
+
+    winD.appendSummary = function(body: any) {
+      body.querySelectorAll('.totals-block, .payment-note, .sig-grid').forEach((e: any) => e.remove());
+
+      const totals = doc.createElement('div');
+      totals.className = 'totals-block';
+      let html = `
+        <div class="total-row"><span>Montant HT</span><span contenteditable="true">${formatEuro(data.montantHT)}</span></div>
+        <div class="total-row"><span>TVA (${data.tva > 0 ? Math.round(data.tva / Math.max(data.montantHT, 1) * 100) : 0}%)</span><span contenteditable="true">${formatEuro(data.tva)}</span></div>
+        <div class="total-row ttc"><span>MONTANT TTC</span><span contenteditable="true">${formatEuro(data.montantTTC)}</span></div>`;
+      if (acompteDisplay) {
+        html += `<div class="total-row acompte"><span>⬦ Acompte (${acomptePercent}%)</span><span contenteditable="true">${formatEuro(data.acompte!)}</span></div>`;
+      }
+      totals.innerHTML = html;
+      body.appendChild(totals);
+
+      const note = doc.createElement('div');
+      note.className = 'payment-note';
+      const paymentText = acompteDisplay
+        ? `Pour valider l'offre, merci de procéder au virement d'acompte de ${formatEuro(data.acompte!)} (${acomptePercent}% du TTC).`
+        : 'Paiement à réception de la facture.';
+      note.innerHTML = `<strong>Modalités de paiement —</strong> <span contenteditable="true">${paymentText}</span>`;
+      body.appendChild(note);
+
+      const sigs = doc.createElement('div');
+      sigs.className = 'sig-grid';
+      sigs.innerHTML = `
+        <div class="sig-box"><div class="sig-label">Pour l'entreprise</div><div class="sig-area">Signature &amp; Tampon</div></div>
+        <div class="sig-box"><div class="sig-label">Pour le client</div><div class="sig-area">Signature &amp; Tampon<small>Précédé de "Bon pour accord"</small></div></div>`;
+      body.appendChild(sigs);
+    };
+
+    // Re-run render with the overridden appendSummary
+    try { winD.render?.(); } catch { /* ignoré */ }
+  }
+
+  // ── Totaux (fallback for templates without render()) ─────────────────────
   doc.querySelectorAll('.totals-block .total-row, .totals .row, .devis-totals .row').forEach((row) => {
     const label = (row.querySelector('span:first-child, .label, td:first-child')?.textContent ?? '').toLowerCase();
     const valEl = row.querySelector('span[contenteditable], span:last-child, .value, td:last-child');
