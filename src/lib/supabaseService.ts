@@ -180,14 +180,10 @@ export function reorderPersonalTasksRemote(tasks: Array<{ id: string; ordre: num
   const supabase = sb();
   if (!supabase) return;
 
-  // Batch update via upsert
-  const updates = tasks.map(t => ({ id: t.id, ordre: t.ordre }));
-  supabase
-    .from('personal_tasks')
-    .upsert(updates, { onConflict: 'id', ignoreDuplicates: false })
-    .then(({ error }) => {
-      if (error) console.warn('[Supabase] reorderPersonalTasks error:', error.message);
-    });
+  for (const { id, ordre } of tasks) {
+    supabase.from('personal_tasks').update({ ordre }).eq('id', id)
+      .then(({ error }) => { if (error) console.warn('[Supabase] reorder task error:', error.message); });
+  }
 }
 
 // ─── PERSONAL NOTES ─────────────────────────────────────────────────────────
@@ -261,13 +257,10 @@ export function reorderPersonalNotesRemote(notes: Array<{ id: string; ordre: num
   const supabase = sb();
   if (!supabase) return;
 
-  const updates = notes.map(n => ({ id: n.id, ordre: n.ordre }));
-  supabase
-    .from('personal_notes')
-    .upsert(updates, { onConflict: 'id', ignoreDuplicates: false })
-    .then(({ error }) => {
-      if (error) console.warn('[Supabase] reorderPersonalNotes error:', error.message);
-    });
+  for (const { id, ordre } of notes) {
+    supabase.from('personal_notes').update({ ordre }).eq('id', id)
+      .then(({ error }) => { if (error) console.warn('[Supabase] reorder note error:', error.message); });
+  }
 }
 
 // ─── USER SPACE INITIALIZATION ──────────────────────────────────────────────

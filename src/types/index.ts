@@ -516,7 +516,6 @@ export interface UserAccount {
   nom: string;
   prenom: string;
   role: UserRole;
-  password?: string;           // @deprecated — utiliser passwordHash
   passwordHash: string;        // SHA-256 + sel via Web Crypto API
   permissions: SectionPermission[];
   freelancerId?: string;       // lien vers Freelancer si role === 'freelancer'

@@ -7,7 +7,7 @@ import { ProgressBar } from '../components/ui/ProgressBar';
 import { StatCard } from '../components/ui/StatCard';
 import { WorkTimer } from '../components/WorkTimer/WorkTimer';
 import { TimerHistory } from '../components/WorkTimer/TimerHistory';
-import { exportTimerSessionsCsv } from '../lib/csvExport';
+import { exportTimerSessionsCsv } from '../utils/csvExport';
 import clsx from 'clsx';
 
 const taskStatusColors = {

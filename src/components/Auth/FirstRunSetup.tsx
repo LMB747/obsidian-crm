@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Zap, Building2, Mail, Lock, Eye, EyeOff, AlertCircle, Phone, MapPin, Hash, ChevronRight, ShieldCheck } from 'lucide-react';
 import clsx from 'clsx';
-import { hashPassword } from '../../utils/crypto';
+import { hashPasswordWithSalt } from '../../utils/crypto';
 
 interface SetupData {
   agencyName: string;
@@ -92,7 +92,7 @@ export const FirstRunSetup: React.FC<FirstRunSetupProps> = ({ onSetup }) => {
     if (!validateStep2()) return;
     setIsLoading(true);
     try {
-      const passwordHash = await hashPassword(password);
+      const passwordHash = await hashPasswordWithSalt(password);
       onSetup({
         agencyName: agencyName.trim(),
         adminEmail: adminEmail.trim(),

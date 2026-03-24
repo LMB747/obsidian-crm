@@ -1,5 +1,7 @@
 -- ============================================================
--- OBSIDIAN CRM — Supabase Setup
+-- OBSIDIAN CRM — Supabase Setup (initial)
+-- ATTENTION : pour les nouveaux déploiements, utiliser supabase/migrations/ uniquement.
+-- Ce fichier est conservé pour référence.
 -- Exécuter dans Supabase Dashboard → SQL Editor
 -- ============================================================
 
@@ -97,7 +99,7 @@ CREATE TABLE IF NOT EXISTS personal_tasks (
   priorite TEXT DEFAULT 'normale' CHECK (priorite IN ('basse', 'normale', 'haute', 'urgente')),
   date_echeance DATE,
   date_creation TIMESTAMPTZ DEFAULT now(),
-  tags TEXT[] DEFAULT '{}',
+  tags JSONB DEFAULT '[]'::jsonb,
   subtasks JSONB DEFAULT '[]',
   ordre INTEGER DEFAULT 0,
   rappel TIMESTAMPTZ

@@ -10,7 +10,7 @@ import { Invoice, InvoiceStatus } from '../types';
 import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { StatCard } from '../components/ui/StatCard';
-import { exportInvoicesCsv } from '../lib/csvExport';
+import { exportInvoicesCsv } from '../utils/csvExport';
 import clsx from 'clsx';
 
 const statusConfig: Record<InvoiceStatus, { label: string; variant: any; icon: React.FC<any>; color: string }> = {

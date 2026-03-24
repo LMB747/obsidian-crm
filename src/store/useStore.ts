@@ -157,7 +157,7 @@ export const useStore = create<CRMStore>()(
         };
         set((state) => ({ freelancers: [...state.freelancers, newFreelancer] }));
         get().addActivity({
-          type: 'client',
+          type: 'freelancer',
           titre: 'Nouveau prestataire ajouté',
           description: `${newFreelancer.prenom} ${newFreelancer.nom} — ${newFreelancer.entreprise}`,
           date: new Date().toISOString(),
@@ -273,15 +273,18 @@ export const useStore = create<CRMStore>()(
         const prevTask = prevProject?.taches.find(t => t.id === taskId);
         const currentUser = get().currentUser;
 
+        // Pre-calculate progression before set() to avoid stale state reads
+        const prevTaches = prevProject?.taches || [];
+        const simulatedTaches = prevTaches.map(t => t.id === taskId ? { ...t, ...updates } : t);
+        const totalTasks = simulatedTaches.length;
+        const doneTasks = simulatedTaches.filter(t => t.statut === 'fait').length;
+        const newProgression = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+
         set((state) => ({
           projects: state.projects.map((p) => {
             if (p.id !== projectId) return p;
             const updatedTaches = p.taches.map((t) => (t.id === taskId ? { ...t, ...updates } : t));
-            // Auto-calcul progression
-            const total = updatedTaches.length;
-            const done = updatedTaches.filter(t => t.statut === 'fait').length;
-            const progression = total > 0 ? Math.round((done / total) * 100) : p.progression;
-            return { ...p, taches: updatedTaches, progression };
+            return { ...p, taches: updatedTaches, progression: newProgression };
           }),
         }));
 
@@ -329,12 +332,11 @@ export const useStore = create<CRMStore>()(
             entityNom: prevProject?.nom,
           });
 
-          // Si projet à 100%, notifier
-          const project = get().projects.find(p => p.id === projectId);
-          if (project && project.progression === 100 && updates.statut === 'fait') {
+          // Si projet à 100%, notifier (use pre-calculated value, not stale state)
+          if (newProgression === 100 && updates.statut === 'fait') {
             get().addNotification({
-              titre: '🎉 Projet terminé !',
-              message: `Toutes les tâches de "${project.nom}" sont complètes. Pensez à créer la facture finale.`,
+              titre: 'Projet terminé !',
+              message: `Toutes les tâches de "${prevProject?.nom || 'projet'}" sont complètes. Pensez à créer la facture finale.`,
               type: 'success',
               lu: false,
               date: new Date().toISOString(),
@@ -346,9 +348,14 @@ export const useStore = create<CRMStore>()(
 
       deleteTask: (projectId, taskId) => {
         set((state) => ({
-          projects: state.projects.map((p) =>
-            p.id === projectId ? { ...p, taches: p.taches.filter((t) => t.id !== taskId) } : p
-          ),
+          projects: state.projects.map((p) => {
+            if (p.id !== projectId) return p;
+            const updatedTaches = p.taches.filter((t) => t.id !== taskId);
+            const total = updatedTaches.length;
+            const done = updatedTaches.filter(t => t.statut === 'fait').length;
+            const progression = total > 0 ? Math.round((done / total) * 100) : 0;
+            return { ...p, taches: updatedTaches, progression };
+          }),
         }));
       },
 
@@ -413,14 +420,6 @@ export const useStore = create<CRMStore>()(
       addInvoice: (invoiceData) => {
         const newInvoice: Invoice = { ...invoiceData, id: uuidv4() };
         set((state) => ({ invoices: [...state.invoices, newInvoice] }));
-        // Sync project depenses if linked
-        if (newInvoice.projectId) {
-          set((state) => ({
-            projects: state.projects.map(p => p.id === newInvoice.projectId
-              ? { ...p, depenses: p.depenses + (newInvoice.total || 0) }
-              : p),
-          }));
-        }
         toast.success('Facture créée', newInvoice.numero);
         get()._audit('create_invoice', 'invoices', `${newInvoice.numero} — ${newInvoice.clientNom} — ${newInvoice.total?.toLocaleString('fr-FR')} €`);
       },
@@ -1009,7 +1008,7 @@ export const useStore = create<CRMStore>()(
         const freelancer = get().freelancers.find(f => f.id === freelancerId);
         if (project && freelancer) {
           get().addProjectActivity(projectId, {
-            type: 'commentaire',
+            type: 'tache_cree',
             auteurId: get().currentUser?.id || 'system',
             auteurNom: get().currentUser ? `${get().currentUser!.prenom || ''} ${get().currentUser!.nom || ''}`.trim() || get().currentUser!.email : 'Admin',
             titre: 'Prestataire ajouté',
@@ -1040,6 +1039,13 @@ export const useStore = create<CRMStore>()(
       completeSetup: ({ agencyName, adminEmail, passwordHash }) => {
         set((state) => ({
           setupComplete: true,
+          clients: [],
+          freelancers: [],
+          projects: [],
+          invoices: [],
+          snoozeSubscriptions: [],
+          activities: [],
+          timerSessions: [],
           settings: { ...state.settings, nom: agencyName, email: adminEmail },
           users: state.users.map((u) =>
             u.id === 'admin-001'

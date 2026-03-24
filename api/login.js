@@ -1,9 +1,12 @@
 var crypto = require('crypto');
+var bcrypt = require('bcryptjs');
 
-module.exports = function handler(req, res) {
-  // CORS: restrict to same origin in production
-  var origin = req.headers.origin || '';
-  var allowed = process.env.ALLOWED_ORIGIN || origin; // fallback: allow same origin
+module.exports = async function handler(req, res) {
+  // CORS: strict origin check
+  var allowed = process.env.ALLOWED_ORIGIN;
+  if (!allowed) {
+    return res.status(500).json({ success: false, error: 'ALLOWED_ORIGIN non configuré.' });
+  }
   res.setHeader('Access-Control-Allow-Origin', allowed);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -19,17 +22,21 @@ module.exports = function handler(req, res) {
   var raw = process.env.AUTH_USERS || '';
   if (!raw) return res.status(500).json({ success: false, error: 'AUTH_USERS manquant.' });
 
+  // Format AUTH_USERS: email:bcryptHash:role:nom (séparés par des virgules)
   var entries = raw.split(',');
   for (var i = 0; i < entries.length; i++) {
     var p = entries[i].trim().split(':');
-    if (p[0] && p[0].toLowerCase() === email.toLowerCase().trim() && p[1] === password) {
-      // Secure token: 32 bytes of cryptographic randomness
-      var token = crypto.randomBytes(32).toString('hex');
-      return res.status(200).json({
-        success: true,
-        user: { email: p[0], role: p[2] || 'admin', nom: p[3] || 'User' },
-        token: token,
-      });
+    if (p[0] && p[0].toLowerCase() === email.toLowerCase().trim()) {
+      // Compare with bcrypt hash
+      var passwordMatch = await bcrypt.compare(password, p[1]);
+      if (passwordMatch) {
+        var token = crypto.randomBytes(32).toString('hex');
+        return res.status(200).json({
+          success: true,
+          user: { email: p[0], role: p[2] || 'admin', nom: p[3] || 'User' },
+          token: token,
+        });
+      }
     }
   }
 

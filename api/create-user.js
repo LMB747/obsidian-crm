@@ -9,9 +9,11 @@ const DEFAULT_PERMISSIONS = {
 };
 
 module.exports = async function handler(req, res) {
-  // CORS
-  var origin = req.headers.origin || '';
-  var allowed = process.env.ALLOWED_ORIGIN || origin;
+  // CORS: strict origin check
+  var allowed = process.env.ALLOWED_ORIGIN;
+  if (!allowed) {
+    return res.status(500).json({ success: false, error: 'ALLOWED_ORIGIN non configuré.' });
+  }
   res.setHeader('Access-Control-Allow-Origin', allowed);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');

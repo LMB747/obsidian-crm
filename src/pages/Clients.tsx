@@ -10,7 +10,7 @@ import { Client, ClientStatus } from '../types';
 import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { StatCard } from '../components/ui/StatCard';
-import { exportClientsCsv, parseCsv, mapCsvToClients } from '../lib/csvExport';
+import { exportClientsCsv, parseCsv, mapCsvToClients } from '../utils/csvExport';
 import { useDebounce } from '../hooks/useDebounce';
 import { TagPicker } from '../components/ui/TagPicker';
 import clsx from 'clsx';

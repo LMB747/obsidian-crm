@@ -10,7 +10,7 @@ import {
 import clsx from 'clsx';
 import { useStore } from '../store/useStore';
 import { UserAccount, UserRole, SectionPermission, Workspace, Invitation } from '../types';
-import { hashPassword } from '../utils/crypto';
+import { hashPasswordWithSalt } from '../utils/crypto';
 import { toast } from '../components/ui/Toast';
 import { isSupabaseConfigured } from '../lib/supabaseAuth';
 import { fetchAuditLogs } from '../lib/supabaseService';
@@ -70,7 +70,7 @@ const UserModal: React.FC<UserModalProps> = ({ user, onClose, onSave, freelancer
   const [prenom, setPrenom] = useState(user?.prenom ?? '');
   const [nom, setNom] = useState(user?.nom ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
-  const [password, setPassword] = useState(user?.password ?? '');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<UserRole>(user?.role ?? 'viewer');
   const [freelancerId, setFreelancerId] = useState(user?.freelancerId ?? '');
@@ -116,7 +116,7 @@ const UserModal: React.FC<UserModalProps> = ({ user, onClose, onSave, freelancer
     if (!validate()) return;
     const rawPwd = password.trim();
     const passwordHash = rawPwd
-      ? await hashPassword(rawPwd)
+      ? await hashPasswordWithSalt(rawPwd)
       : (user?.passwordHash ?? '');
     onSave({
       prenom: prenom.trim(),
