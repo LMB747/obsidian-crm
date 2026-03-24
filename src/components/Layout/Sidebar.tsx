@@ -191,7 +191,7 @@ export const Sidebar: React.FC<{ onNavigate?: () => void }> = ({ onNavigate }) =
         )}
 
         {/* Settings button */}
-        {(!currentUser || currentUser.permissions.includes('settings')) && (
+        {(currentUser && (currentUser.role === 'admin' || currentUser.permissions.includes('settings'))) && (
           <button
             onClick={() => navigate('settings')}
             className={clsx(

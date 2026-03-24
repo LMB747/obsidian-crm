@@ -132,11 +132,26 @@ const App: React.FC = () => {
 
   if (!currentUser) return <LoginScreen onLogin={handleLogin} />;
 
-  if (currentUser.role === 'freelancer') {
-    const allowed = currentUser.permissions as string[];
-    if (activeSection === 'freelancer-portal' || !allowed.includes(activeSection)) {
+  // ── Permission guard: enforce for ALL roles ────────────────────────────
+  const userPermissions = (currentUser.permissions || []) as string[];
+
+  // Admin section: admin role only
+  if (activeSection === 'admin' && currentUser.role !== 'admin') {
+    return <Layout><Suspense fallback={<PageSkeleton />}><Dashboard /></Suspense></Layout>;
+  }
+
+  // Freelancer portal shortcut
+  if (currentUser.role === 'freelancer' && activeSection === 'freelancer-portal') {
+    return <Layout><Suspense fallback={<PageSkeleton />}><FreelancerPortal /></Suspense></Layout>;
+  }
+
+  // Check section permission for non-admin users
+  if (currentUser.role !== 'admin' && !userPermissions.includes(activeSection)) {
+    // Redirect to dashboard (or freelancer portal) if unauthorized
+    if (currentUser.role === 'freelancer') {
       return <Layout><Suspense fallback={<PageSkeleton />}><FreelancerPortal /></Suspense></Layout>;
     }
+    return <Layout><Suspense fallback={<PageSkeleton />}><Dashboard /></Suspense></Layout>;
   }
 
   const Page = pageMap[activeSection] || NotFound;

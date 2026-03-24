@@ -2,6 +2,12 @@ const { createClient } = require('@supabase/supabase-js');
 
 const VALID_ROLES = ['admin', 'freelancer', 'viewer'];
 
+const DEFAULT_PERMISSIONS = {
+  admin: ['dashboard','clients','freelancers','projects','worktracking','invoices','documents','snooze','calendar','analytics','media-buying','prospection','personal','settings','admin'],
+  freelancer: ['dashboard','projects','worktracking','calendar','personal','settings'],
+  viewer: ['dashboard','calendar','personal','settings'],
+};
+
 module.exports = async function handler(req, res) {
   // CORS
   var origin = req.headers.origin || '';
@@ -69,7 +75,8 @@ module.exports = async function handler(req, res) {
 
     var userId = result.data.user.id;
 
-    // Insert/update profile
+    // Insert/update profile with default permissions
+    var permissions = DEFAULT_PERMISSIONS[role] || DEFAULT_PERMISSIONS.viewer;
     var profileResult = await supabase.from('profiles').upsert({
       id: userId,
       email: email,
@@ -77,6 +84,7 @@ module.exports = async function handler(req, res) {
       prenom: prenom,
       role: role,
       is_active: true,
+      permissions: permissions,
     });
 
     if (profileResult.error) {

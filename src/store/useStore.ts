@@ -710,8 +710,8 @@ export const useStore = create<CRMStore>()(
       syncSessionUser: ({ email, role, nom, prenom }: { email: string; role: string; nom: string; prenom: string }) => {
         const permissionsByRole: Record<string, string[]> = {
           admin: ['dashboard','clients','freelancers','projects','worktracking','invoices','documents','snooze','calendar','analytics','media-buying','prospection','personal','settings','admin'],
-          freelancer: ['dashboard','projects','worktracking','calendar','personal'],
-          viewer: ['dashboard','calendar','personal'],
+          freelancer: ['dashboard','projects','worktracking','calendar','personal','settings'],
+          viewer: ['dashboard','calendar','personal','settings'],
         };
         const permissions = permissionsByRole[role] || permissionsByRole.viewer;
 

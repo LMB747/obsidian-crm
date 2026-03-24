@@ -51,7 +51,8 @@ const ACTION_COLORS: Record<string, string> = {
   clear_logs:        'bg-orange-500/20 text-orange-400',
 };
 
-const DEFAULT_FREELANCER_PERMISSIONS: SectionPermission[] = ['projects', 'worktracking'];
+const DEFAULT_FREELANCER_PERMISSIONS: SectionPermission[] = ['dashboard', 'projects', 'worktracking', 'calendar', 'personal', 'settings'];
+const DEFAULT_VIEWER_PERMISSIONS: SectionPermission[] = ['dashboard', 'calendar', 'personal', 'settings'];
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
 interface UserModalProps {
@@ -84,12 +85,14 @@ const UserModal: React.FC<UserModalProps> = ({ user, onClose, onSave, freelancer
     } else if (newRole === 'freelancer') {
       setPermissions(DEFAULT_FREELANCER_PERMISSIONS);
     } else {
-      setPermissions(['dashboard']);
+      setPermissions(DEFAULT_VIEWER_PERMISSIONS);
     }
   };
 
   const togglePermission = (section: SectionPermission) => {
     if (role === 'admin') return;
+    // Block 'admin' permission for non-admin roles
+    if (section === 'admin') return;
     setPermissions(prev =>
       prev.includes(section) ? prev.filter(p => p !== section) : [...prev, section]
     );
@@ -1194,7 +1197,7 @@ export const Admin: React.FC = () => {
                       key={r}
                       onClick={() => {
                         setInvRole(r);
-                        setInvPermissions(r === 'admin' ? SECTION_CONFIG.map(s => s.id) : r === 'freelancer' ? DEFAULT_FREELANCER_PERMISSIONS : ['dashboard']);
+                        setInvPermissions(r === 'admin' ? SECTION_CONFIG.map(s => s.id) : r === 'freelancer' ? DEFAULT_FREELANCER_PERMISSIONS : DEFAULT_VIEWER_PERMISSIONS);
                       }}
                       className={clsx(
                         'px-3 py-2 rounded-xl border text-xs font-semibold transition-all',
