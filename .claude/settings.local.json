@@ -36,7 +36,8 @@
       "Bash(python guide_prospection_ia.py)",
       "Bash(ls -la \"/c/Users/benig/Desktop/Obsidian/\"*.html)",
       "Bash(npx vercel:*)",
-      "WebFetch(domain:obsidian-agency-crm.vercel.app)"
+      "WebFetch(domain:obsidian-agency-crm.vercel.app)",
+      "Bash(curl -s -X POST https://obsidian-crm-app.vercel.app/api/login -H \"Content-Type: application/json\" -d '{\"\"email\"\":\"\"admin@obsidian.fr\"\",\"\"password\"\":\"\"Admin123!\"\"}')"
     ]
   }
 }

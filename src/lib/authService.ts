@@ -36,9 +36,9 @@ export async function loginAPI(email: string, password: string): Promise<{ succe
       return { success: true, user: session };
     }
 
-    return { success: false, error: data.error || 'Erreur de connexion.' };
-  } catch {
-    // Fallback for local dev (no API available) — use localStorage-based auth
+    return { success: false, error: data.error || 'Identifiants incorrects.' };
+  } catch (err: any) {
+    // API not available (local dev or network error)
     return { success: false, error: 'Serveur non disponible. Vérifiez votre connexion.' };
   }
 }
