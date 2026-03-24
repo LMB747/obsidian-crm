@@ -211,7 +211,7 @@ export const useStore = create<CRMStore>()(
         get().addProjectActivity(newProject.id, {
           type: 'projet_cree',
           auteurId: currentUser?.id || 'system',
-          auteurNom: currentUser ? `${currentUser.prenom} ${currentUser.nom}` : 'Admin',
+          auteurNom: currentUser ? `${currentUser.prenom || ''} ${currentUser.nom || ''}`.trim() || currentUser.email : 'Admin',
           titre: 'Projet créé',
           description: `Budget : ${newProject.budget.toLocaleString('fr-FR')} € — Client : ${newProject.clientNom}`,
           date: new Date().toISOString(),
@@ -249,7 +249,7 @@ export const useStore = create<CRMStore>()(
         get().addProjectActivity(projectId, {
           type: 'tache_cree',
           auteurId: currentUser?.id || 'system',
-          auteurNom: currentUser ? `${currentUser.prenom} ${currentUser.nom}` : 'Admin',
+          auteurNom: currentUser ? `${currentUser.prenom || ''} ${currentUser.nom || ''}`.trim() || currentUser.email : 'Admin',
           titre: 'Nouvelle tâche créée',
           description: `"${newTask.titre}" assignée à ${newTask.assigneA || 'personne'}`,
           date: new Date().toISOString(),
@@ -288,7 +288,7 @@ export const useStore = create<CRMStore>()(
         // Notification si changement de statut
         if (updates.statut && prevTask && updates.statut !== prevTask.statut) {
           const taskName = prevTask.titre;
-          const authorName = currentUser ? `${currentUser.prenom} ${currentUser.nom}` : 'Système';
+          const authorName = currentUser ? `${currentUser.prenom || ''} ${currentUser.nom || ''}`.trim() || currentUser.email : 'Système';
           const authorId = currentUser?.id || 'system';
 
           const statusLabels: Record<string, string> = { 'todo': 'À faire', 'en cours': 'En cours', 'fait': 'Terminé' };
@@ -444,7 +444,7 @@ export const useStore = create<CRMStore>()(
             get().addProjectActivity(inv.projectId, {
               type: 'facture',
               auteurId: get().currentUser?.id || 'system',
-              auteurNom: get().currentUser ? `${get().currentUser!.prenom} ${get().currentUser!.nom}` : 'Admin',
+              auteurNom: get().currentUser ? `${get().currentUser!.prenom || ''} ${get().currentUser!.nom || ''}`.trim() || get().currentUser!.email : 'Admin',
               titre: 'Facture payée',
               description: `Facture ${inv.numero} — ${inv.total.toLocaleString('fr-FR')} €`,
               date: new Date().toISOString(),
@@ -1011,7 +1011,7 @@ export const useStore = create<CRMStore>()(
           get().addProjectActivity(projectId, {
             type: 'commentaire',
             auteurId: get().currentUser?.id || 'system',
-            auteurNom: get().currentUser ? `${get().currentUser!.prenom} ${get().currentUser!.nom}` : 'Admin',
+            auteurNom: get().currentUser ? `${get().currentUser!.prenom || ''} ${get().currentUser!.nom || ''}`.trim() || get().currentUser!.email : 'Admin',
             titre: 'Prestataire ajouté',
             description: `${freelancer.prenom} ${freelancer.nom} (${freelancer.specialite}) a rejoint le projet`,
             date: new Date().toISOString(),

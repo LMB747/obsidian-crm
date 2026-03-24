@@ -707,7 +707,7 @@ export const Admin: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-card-border">
                   {users.map(user => {
-                    const initials = `${user.prenom[0]}${user.nom[0]}`.toUpperCase();
+                    const initials = `${(user.prenom || 'U')[0]}${(user.nom || 'U')[0]}`.toUpperCase();
                     return (
                       <tr key={user.id} className="hover:bg-obsidian-800/40 transition-colors">
                         {/* Avatar + Nom */}

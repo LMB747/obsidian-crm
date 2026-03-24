@@ -171,7 +171,7 @@ const ProjectTeam: React.FC<{
               return (
                 <div key={f.id} className="flex items-center gap-3 p-3 bg-card border border-card-border rounded-xl hover:border-primary-500/30 transition-all">
                   <div className="w-9 h-9 rounded-xl bg-primary-500/20 flex items-center justify-center flex-shrink-0">
-                    <span className="text-primary-400 font-bold text-sm">{f.prenom[0]}{f.nom[0]}</span>
+                    <span className="text-primary-400 font-bold text-sm">{(f.prenom || 'F')[0]}{(f.nom || 'L')[0]}</span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -230,7 +230,7 @@ const ProjectTeam: React.FC<{
                 className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-primary-500/10 hover:border-primary-500/30 border border-transparent transition-all text-left"
               >
                 <div className="w-7 h-7 rounded-lg bg-obsidian-700 flex items-center justify-center flex-shrink-0">
-                  <span className="text-slate-300 font-bold text-xs">{f.prenom[0]}{f.nom[0]}</span>
+                  <span className="text-slate-300 font-bold text-xs">{(f.prenom || 'F')[0]}{(f.nom || 'L')[0]}</span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <span className="text-sm text-white font-medium">{f.prenom} {f.nom}</span>

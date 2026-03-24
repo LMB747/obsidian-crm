@@ -687,7 +687,7 @@ export const Analytics: React.FC = () => {
         {/* Top 5 freelancers */}
         <div className="space-y-3">
           {topFreelancers.map((f, index) => {
-            const initials = `${f.prenom.charAt(0)}${f.nom.charAt(0)}`.toUpperCase();
+            const initials = `${(f.prenom || 'F')[0]}${(f.nom || 'L')[0]}`.toUpperCase();
             const color = INITIALS_COLORS[index % INITIALS_COLORS.length];
             return (
               <div key={f.id} className="flex items-center gap-3">
