@@ -2,10 +2,8 @@ import React, { lazy, Suspense, useEffect, useState, useCallback } from 'react';
 import { useStore } from './store/useStore';
 import { Layout } from './components/Layout/Layout';
 import { LoginScreen } from './components/Auth/LoginScreen';
-import { FirstRunSetup } from './components/Auth/FirstRunSetup';
 import { PageSkeleton } from './components/ui/Skeleton';
-import { loginAPI, getSession, clearSession, type SessionUser } from './lib/authService';
-import { signIn, signOut, getCurrentUser, onAuthStateChange, isSupabaseConfigured, type UserProfile } from './lib/supabaseAuth';
+import { loginAPI, getSession, clearSession } from './lib/authService';
 
 const Dashboard       = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const Clients         = lazy(() => import('./pages/Clients').then(m => ({ default: m.Clients })));
@@ -43,89 +41,50 @@ const pageMap: Record<string, React.ComponentType> = {
 };
 
 const App: React.FC = () => {
-  const { activeSection, currentUser, login, setupComplete, completeSetup } = useStore();
+  const { activeSection, currentUser, login } = useStore();
   const setActiveSection = useStore((s) => s.setActiveSection);
-  // ── ALL hooks MUST be before any early return ──────────────────────────────
-  const [supabaseUser, setSupabaseUser] = useState<UserProfile | null>(null);
-  const [sessionUser, setSessionUser] = useState<SessionUser | null>(() => getSession());
-  const [authLoading, setAuthLoading] = useState(isSupabaseConfigured());
-  // Setup JAMAIS affiché sauf URL exacte /#setup sur un navigateur non-configuré
-  const [showSetup, setShowSetup] = useState(() => window.location.hash === '#setup');
 
-  // Check Supabase session on mount
-  useEffect(() => {
-    if (!isSupabaseConfigured()) { setAuthLoading(false); return; }
-    getCurrentUser().then(user => {
-      setSupabaseUser(user);
-      setAuthLoading(false);
-    });
-    const { unsubscribe } = onAuthStateChange((authUser) => {
-      if (!authUser) { setSupabaseUser(null); return; }
-      getCurrentUser().then(setSupabaseUser);
-    });
-    return () => unsubscribe();
-  }, []);
+  // ── Restore session on mount ──────────────────────────────────────────────
+  const [ready, setReady] = useState(false);
 
-  // Auto-restore session on page load
   useEffect(() => {
-    const saved = getSession();
-    if (saved && !currentUser) {
-      const nameParts = (saved.nom || '').split(' ');
-      useStore.getState().syncSessionUser({
-        email: saved.email,
-        role: saved.role || 'admin',
-        nom: nameParts.slice(1).join(' ') || saved.nom || '',
-        prenom: nameParts[0] || '',
-      });
+    // If no currentUser in store, check for saved API session
+    if (!currentUser) {
+      const saved = getSession();
+      if (saved) {
+        useStore.getState().syncSessionUser({
+          email: saved.email,
+          role: saved.role || 'admin',
+          nom: saved.nom || '',
+          prenom: '',
+        });
+      }
     }
+    setReady(true);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Combined auth: Supabase OR API session OR store-based currentUser
-  const isLoggedIn = !!supabaseUser || !!sessionUser || !!currentUser;
+  const isLoggedIn = !!currentUser;
 
-  // Unified login: Supabase → API → Local store
+  // ── Login: API first → local store fallback ───────────────────────────────
   const handleLogin = useCallback(async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
-    // 1. Try Supabase auth (real database)
-    if (isSupabaseConfigured()) {
-      const result = await signIn(email, password);
-      if (result.success && result.user) {
-        setSupabaseUser(result.user);
-        return { success: true };
-      }
-      // If Supabase is configured but login failed, return the error (don't fallback)
-      return { success: false, error: result.error };
-    }
-
-    // 2. Try API-based login (Vercel env vars)
+    // Try API (Vercel serverless)
     const apiResult = await loginAPI(email, password);
     if (apiResult.success && apiResult.user) {
-      setSessionUser(apiResult.user);
-      // Sync session user to Zustand store so the whole app recognizes the role
-      const nameParts = (apiResult.user.nom || '').split(' ');
       useStore.getState().syncSessionUser({
         email: apiResult.user.email,
-        role: apiResult.user.role as any || 'admin',
-        nom: nameParts.slice(1).join(' ') || apiResult.user.nom || '',
-        prenom: nameParts[0] || '',
+        role: apiResult.user.role || 'admin',
+        nom: apiResult.user.nom || '',
+        prenom: '',
       });
       return { success: true };
     }
 
-    // 3. Fallback: local store (dev only)
+    // Fallback: local store (dev)
     const storeResult = await login(email, password);
     if (storeResult.success) return { success: true };
 
     return { success: false, error: apiResult.error || storeResult.error || 'Identifiants incorrects.' };
   }, [login]);
-
-  // Logout clears everything
-  const handleLogout = useCallback(async () => {
-    if (isSupabaseConfigured()) await signOut();
-    clearSession();
-    setSessionUser(null);
-    setSupabaseUser(null);
-    useStore.getState().logout();
-  }, []);
 
   // Sync URL hash ↔ activeSection
   useEffect(() => {
@@ -152,21 +111,8 @@ const App: React.FC = () => {
 
   // ── Rendering ──────────────────────────────────────────────────────────────
 
-  // Attendre que l'auth soit prête
-  if (authLoading) {
-    return <PageSkeleton />;
-  }
+  if (!ready) return <PageSkeleton />;
 
-  // Setup UNIQUEMENT si hash === #setup ET pas encore configuré localement
-  if (showSetup && !setupComplete && window.location.hash === '#setup') {
-    return (
-      <Suspense fallback={<PageSkeleton />}>
-        <FirstRunSetup onSetup={(data) => { completeSetup(data); setShowSetup(false); window.location.hash = ''; }} />
-      </Suspense>
-    );
-  }
-
-  // TOUJOURS login par défaut — jamais de setup wizard
   if (!isLoggedIn) {
     return <LoginScreen onLogin={handleLogin} />;
   }
