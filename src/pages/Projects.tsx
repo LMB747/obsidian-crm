@@ -113,6 +113,7 @@ const defaultNewProject = {
   dateFin: '',
   budget: 0,
   tags: [] as string[],
+  freelancerIds: [] as string[],
 };
 
 // ─── ProjectTeam ─────────────────────────────────────────────────────────────
@@ -135,12 +136,15 @@ const ProjectTeam: React.FC<{
     ? Math.max(1, Math.ceil((new Date(project.dateFin).getTime() - new Date(project.dateDebut).getTime()) / (1000 * 60 * 60 * 24 * 5 / 7)))
     : 0;
 
-  // Tâches par freelancer
+  // Tâches par freelancer (match par ID puis fallback par nom)
   const taskCountByFreelancer = (freelancerId: string) => {
     const f = allFreelancers.find(fl => fl.id === freelancerId);
     if (!f) return { total: 0, done: 0 };
     const fullName = `${f.prenom} ${f.nom}`.toLowerCase();
-    const tasks = (project.taches || []).filter(t => t.assigneA.toLowerCase().includes(fullName));
+    const tasks = (project.taches || []).filter(t =>
+      (t.assigneAIds || []).includes(freelancerId) ||
+      t.assigneA.toLowerCase() === fullName
+    );
     return { total: tasks.length, done: tasks.filter(t => t.statut === 'fait').length };
   };
 
@@ -244,7 +248,7 @@ const ProjectTeam: React.FC<{
       {/* Alerte sur-assignement */}
       {attachedFreelancers.some(f => {
         const allTasksForFreelancer = (project.taches || []).filter(t =>
-          t.assigneA.toLowerCase().includes(`${f.prenom} ${f.nom}`.toLowerCase()) && t.statut !== 'fait'
+          ((t.assigneAIds || []).includes(f.id) || t.assigneA.toLowerCase() === `${f.prenom} ${f.nom}`.toLowerCase()) && t.statut !== 'fait'
         );
         return allTasksForFreelancer.length > 5;
       }) && (
@@ -301,6 +305,7 @@ export const Projects: React.FC = () => {
       dateFin: project.dateFin,
       budget: project.budget,
       tags: [...(project.tags || [])],
+      freelancerIds: [...(project.freelancerIds || [])],
     });
     setIsEditModalOpen(true);
   };
@@ -351,7 +356,7 @@ export const Projects: React.FC = () => {
       taches: [],
       milestones: [],
       equipe: [],
-      freelancerIds: [],
+      freelancerIds: newProject.freelancerIds || [],
       tags: newProject.tags,
       activityLog: [],
     });
@@ -1725,6 +1730,39 @@ export const Projects: React.FC = () => {
               selected={newProject.tags}
               onChange={(tags) => setNewProject(p => ({ ...p, tags }))}
             />
+          </div>
+
+          {/* Équipe — Freelancers */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 mb-1.5">Équipe (prestataires)</label>
+            {newProject.freelancerIds.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {newProject.freelancerIds.map(fid => {
+                  const fl = freelancers.find(f => f.id === fid);
+                  if (!fl) return null;
+                  return (
+                    <span key={fid} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-primary-500/15 text-primary-400">
+                      {fl.prenom} {fl.nom}
+                      <button onClick={() => setNewProject(p => ({ ...p, freelancerIds: p.freelancerIds.filter(id => id !== fid) }))} className="hover:text-red-400"><X className="w-3 h-3" /></button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+            <select
+              value=""
+              onChange={e => {
+                if (e.target.value && !newProject.freelancerIds.includes(e.target.value)) {
+                  setNewProject(p => ({ ...p, freelancerIds: [...p.freelancerIds, e.target.value] }));
+                }
+              }}
+              className={INPUT_CLASS}
+            >
+              <option value="">— Ajouter un prestataire —</option>
+              {freelancers.filter(f => !newProject.freelancerIds.includes(f.id)).map(f => (
+                <option key={f.id} value={f.id}>{f.prenom} {f.nom} — {f.specialite}</option>
+              ))}
+            </select>
           </div>
 
           {/* Actions */}
