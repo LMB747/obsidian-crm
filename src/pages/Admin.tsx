@@ -101,6 +101,7 @@ const UserModal: React.FC<UserModalProps> = ({ user, onClose, onSave, freelancer
     if (!nom.trim()) e.nom = 'Requis';
     if (!email.trim()) e.email = 'Requis';
     if (!isEdit && !password.trim()) e.password = 'Requis';
+    if (password.trim() && password.trim().length < 6) e.password = 'Minimum 6 caractères';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -510,10 +511,36 @@ export const Admin: React.FC = () => {
     setInvModalOpen(true);
   };
 
-  const handleCreateInvitation = () => {
+  const handleCreateInvitation = async () => {
     if (!invEmail.trim()) return;
     const currentUser = useStore.getState().currentUser;
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 days
+    const tempPassword = Math.random().toString(36).slice(2, 10) + 'A1!';
+
+    // Create real account in Supabase via API
+    try {
+      const res = await fetch('/api/create-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: invEmail.trim(),
+          password: tempPassword,
+          nom: invEmail.split('@')[0],
+          prenom: '',
+          role: invRole,
+        }),
+      });
+      const result = await res.json();
+      if (!result.success) {
+        toast.error('Erreur', result.error || 'Impossible de créer le compte');
+        return;
+      }
+    } catch {
+      toast.error('Erreur', 'API non disponible');
+      return;
+    }
+
+    // Save invitation locally (for tracking)
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     createInvitation({
       workspaceId: invWorkspaceId,
       email: invEmail.trim(),
@@ -522,16 +549,19 @@ export const Admin: React.FC = () => {
       createdBy: currentUser?.id || '',
       permissions: invRole === 'admin' ? SECTION_CONFIG.map(s => s.id) : invPermissions,
     });
+
+    toast.success('Invitation envoyée', `Compte créé pour ${invEmail.trim()} — mot de passe temporaire : ${tempPassword}`);
     setInvModalOpen(false);
   };
 
-  const getInvitationLink = (token: string) => {
-    return `${window.location.origin}${window.location.pathname}#invite=${token}`;
+  const getInvitationLink = (_token: string) => {
+    return `${window.location.origin}${window.location.pathname}`;
   };
 
   const copyToClipboard = (token: string) => {
     navigator.clipboard.writeText(getInvitationLink(token));
     setCopiedToken(token);
+    toast.success('Lien copié', 'Envoyez ce lien avec les identifiants à l\'utilisateur');
     setTimeout(() => setCopiedToken(null), 2000);
   };
 
