@@ -293,13 +293,15 @@ export const FreelancerPortal: React.FC = () => {
 
   const fullName = `${currentUser.prenom || ''} ${currentUser.nom || ''}`.trim();
 
-  // Find all tasks assigned to this user (par ID ou par nom)
+  // Find all tasks assigned to this user (par ID, par nom, ou par projet)
   const myIds = [currentUser.id, currentUser.freelancerId].filter(Boolean) as string[];
 
   const assignedTasks = useMemo(() => {
     const result: { task: Task; project: Project }[] = [];
+    const addedTaskIds = new Set<string>();
+
     for (const project of projects) {
-      // Le freelancer doit être dans le projet OU ses tâches
+      // Le freelancer est-il membre du projet ?
       const isInProject = project.freelancerIds?.some(fid => myIds.includes(fid));
 
       for (const task of project.taches) {
@@ -307,24 +309,16 @@ export const FreelancerPortal: React.FC = () => {
         const matchById = (task.assigneAIds || []).some(id => myIds.includes(id));
         // Match par nom textuel (legacy)
         const assignee = (task.assigneA || '').toLowerCase();
-        const matchByName = fullName && (
+        const matchByName = fullName && fullName.length > 1 && (
           assignee.includes(fullName.toLowerCase()) ||
-          assignee.includes((currentUser.nom || '').toLowerCase()) ||
-          assignee.includes((currentUser.prenom || '').toLowerCase())
+          assignee.includes((currentUser.nom || '').toLowerCase())
         );
+        // Match par appartenance au projet (le freelancer voit toutes les tâches de ses projets)
+        const matchByProject = isInProject;
 
-        if (matchById || matchByName) {
+        if ((matchById || matchByName || matchByProject) && !addedTaskIds.has(task.id)) {
           result.push({ task, project });
-        }
-      }
-
-      // Si le freelancer est dans le projet mais aucune tâche spécifique assignée,
-      // montrer toutes les tâches non-assignées du projet
-      if (isInProject && !result.some(r => r.project.id === project.id)) {
-        for (const task of project.taches) {
-          if (!task.assigneA && (!task.assigneAIds || task.assigneAIds.length === 0)) {
-            result.push({ task, project });
-          }
+          addedTaskIds.add(task.id);
         }
       }
     }
