@@ -7,7 +7,7 @@ import {
   List, Columns, AlertTriangle, Download, Search, X,
   Activity, MessageSquare, FolderPlus, ArrowRight, Flag, FileText,
   Crosshair, Layers, Tag, Package, Wallet, GanttChart,
-  Link, ExternalLink, Pen, HardDrive, Github, Columns3, Video, TrendingUp
+  Link, ExternalLink, Pen, HardDrive, Github, Columns3, Video, TrendingUp, MessageCircle, Paperclip
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { Project, ProjectStatus, Task, Freelancer, Objective, ProjectSubCategory, Livrable, LivrableType, LivrableStatut, DepenseProjet, LienAvancementType } from '../types';
@@ -19,6 +19,8 @@ import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { exportProjectsCSV } from '../utils/csvExport';
 import { useDebounce } from '../hooks/useDebounce';
 import { TagPicker } from '../components/ui/TagPicker';
+import { ProjectChat } from '../components/chat/ProjectChat';
+import { FileManager } from '../components/files/FileManager';
 import clsx from 'clsx';
 
 const statusConfig: Record<ProjectStatus, { label: string; variant: any; icon: React.FC<any>; color: string }> = {
@@ -294,7 +296,7 @@ export const Projects: React.FC = () => {
   const [addTaskModal, setAddTaskModal] = useState<string | null>(null);
   const [newTask, setNewTask] = useState({ titre: '', description: '', assigneA: '', assigneAIds: [] as string[], dateEcheance: '', heuresEstimees: 8, priorite: 'normale' as Task['priorite'], statut: 'todo' as Task['statut'], tags: [] as string[] });
   const [taskFreelancerFilter, setTaskFreelancerFilter] = useState<string>('all');
-  const [projectTab, setProjectTab] = useState<Record<string, 'tasks' | 'equipe' | 'objectives' | 'timeline' | 'livrables' | 'budget' | 'liens'>>({});
+  const [projectTab, setProjectTab] = useState<Record<string, 'tasks' | 'equipe' | 'objectives' | 'timeline' | 'livrables' | 'budget' | 'liens' | 'chat' | 'fichiers'>>({});
 
   // Lien d'avancement modal
   const [lienModalOpen, setLienModalOpen] = useState<string | null>(null);
@@ -830,6 +832,8 @@ export const Projects: React.FC = () => {
                         { id: 'livrables', label: 'Livrables', icon: Package },
                         { id: 'budget', label: 'Budget', icon: Wallet },
                         { id: 'liens', label: 'Liens Prestataires', icon: Link },
+                        { id: 'chat', label: 'Chat', icon: MessageCircle },
+                        { id: 'fichiers', label: 'Fichiers', icon: Paperclip },
                         { id: 'timeline', label: 'Timeline', icon: Activity },
                       ] as const).map(tab => (
                         <button
@@ -1252,6 +1256,16 @@ export const Projects: React.FC = () => {
                           </div>
                         )}
                       </div>
+                    )}
+
+                    {/* Chat tab */}
+                    {(projectTab[project.id] ?? 'tasks') === 'chat' && (
+                      <ProjectChat projectId={project.id} projectNom={project.nom} />
+                    )}
+
+                    {/* Fichiers tab */}
+                    {(projectTab[project.id] ?? 'tasks') === 'fichiers' && (
+                      <FileManager projectId={project.id} />
                     )}
 
                     {/* Tasks & Milestones tab */}

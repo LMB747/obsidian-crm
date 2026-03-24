@@ -3,10 +3,11 @@ import {
   Target, CheckCircle2, Clock, PlayCircle,
   AlertCircle, Calendar, TrendingUp, Briefcase,
   ChevronRight, ListTodo, MessageSquare, Send, ChevronDown, ChevronUp, X,
-  Crosshair, FileText, Euro, Timer, Link, Play, Pause
+  Crosshair, FileText, Euro, Timer, Link, Play, Pause, MessageCircle
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useStore } from '../store/useStore';
+import { ProjectChat } from '../components/chat/ProjectChat';
 import { Task, Project, Objective } from '../types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -609,6 +610,19 @@ export const FreelancerPortal: React.FC = () => {
           </div>
         );
       })()}
+
+      {/* ── Chat par projet ──────────────────────────────────────────── */}
+      {projects.filter(p => p.freelancerIds?.includes(currentUser?.freelancerId || currentUser?.id || '')).map(project => (
+        <div key={`chat-${project.id}`} className="mt-6">
+          <div className="bg-card border border-card-border rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-card-border flex items-center gap-2">
+              <MessageCircle className="w-4 h-4 text-primary-400" />
+              <h3 className="text-sm font-bold text-white">Chat — {project.nom}</h3>
+            </div>
+            <ProjectChat projectId={project.id} projectNom={project.nom} />
+          </div>
+        </div>
+      ))}
 
       {/* ── Objectives Section ──────────────────────────────────────── */}
       {assignedObjectives.length > 0 && (
