@@ -11,6 +11,7 @@ import clsx from 'clsx';
 import { useStore } from '../store/useStore';
 import { UserAccount, UserRole, SectionPermission, Workspace, Invitation } from '../types';
 import { hashPassword } from '../utils/crypto';
+import { toast } from '../components/ui/Toast';
 
 // ─── Permission section config ────────────────────────────────────────────────
 const SECTION_CONFIG: { id: SectionPermission; label: string; icon: React.FC<{ className?: string }> }[] = [
@@ -56,7 +57,7 @@ const DEFAULT_FREELANCER_PERMISSIONS: SectionPermission[] = ['projects', 'worktr
 interface UserModalProps {
   user: Partial<UserAccount> | null;
   onClose: () => void;
-  onSave: (data: Omit<UserAccount, 'id' | 'dateCreation'>) => void;
+  onSave: (data: Omit<UserAccount, 'id' | 'dateCreation'>, rawPassword?: string) => void;
   freelancerOptions: { id: string; label: string }[];
 }
 
@@ -122,7 +123,7 @@ const UserModal: React.FC<UserModalProps> = ({ user, onClose, onSave, freelancer
       notes: notes.trim(),
       derniereConnexion: user?.derniereConnexion,
       avatar: user?.avatar,
-    });
+    }, rawPwd || undefined);
   };
 
   return (
@@ -410,11 +411,32 @@ export const Admin: React.FC = () => {
     setModalOpen(true);
   };
 
-  const handleSaveUser = (data: Omit<UserAccount, 'id' | 'dateCreation'>) => {
+  const handleSaveUser = async (data: Omit<UserAccount, 'id' | 'dateCreation'>, rawPassword?: string) => {
     if (editUser?.id) {
       updateUser(editUser.id, data);
+      toast.success('Utilisateur modifié');
     } else {
+      // Create in local store
       addUser(data);
+
+      // Also create in Supabase so login works on ALL browsers
+      if (rawPassword) {
+        try {
+          const { inviteUser, isSupabaseConfigured } = await import('../lib/supabaseAuth');
+          if (isSupabaseConfigured()) {
+            const result = await inviteUser(data.email, rawPassword, data.nom, data.prenom, data.role);
+            if (result.success) {
+              toast.success('Compte créé', `${data.prenom} ${data.nom} — connexion possible depuis n'importe quel navigateur`);
+            } else {
+              toast.warning('Compte local créé', result.error || 'Supabase indisponible — connexion limitée à ce navigateur');
+            }
+          } else {
+            toast.info('Compte local créé', 'Configurez Supabase pour permettre la connexion multi-navigateur');
+          }
+        } catch {
+          toast.info('Compte local créé');
+        }
+      }
     }
     setModalOpen(false);
   };
