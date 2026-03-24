@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { CRMStore, Client, Freelancer, Project, Invoice, SnoozeSubscription, Activity, Task, AgencySettings, TimerSession, UserAccount, AuditLog, TaskNote, ProjectActivity, Notification, Workspace, Invitation, Objective, ProjectSubCategory, UnifiedTag, PersonalTask, PersonalNote } from '../types';
 import { toast } from '../components/ui/Toast';
 import { verifyPassword } from '../utils/crypto';
+import * as supaService from '../lib/supabaseService';
 import {
   mockClients,
   mockFreelancers,
@@ -64,14 +65,17 @@ export const useStore = create<CRMStore>()(
       // ─── Audit helper (private) ──────────────────────────────────────────
       _audit: (action: string, section?: string, details?: string) => {
         const cu = get().currentUser;
-        get().addAuditLog({
+        const log: Omit<AuditLog, 'id'> = {
           userId: cu?.id || 'system',
           userNom: cu ? `${cu.prenom} ${cu.nom}`.trim() : 'Système',
           action,
           section,
           details,
           date: new Date().toISOString(),
-        });
+        };
+        get().addAuditLog(log);
+        // Sync to Supabase (fire-and-forget)
+        supaService.syncAuditLog({ ...log, id: '' });
       },
 
       // ─── Tags unifiés ─────────────────────────────────────────────────────
@@ -730,12 +734,15 @@ export const useStore = create<CRMStore>()(
           finalPermissions = defaultPermissions;
         }
 
+        let resolvedUserId: string;
+
         if (existing) {
           const updatedUser = { ...existing, role: role as any, permissions: finalPermissions as any, derniereConnexion: new Date().toISOString() };
           set(state => ({
             currentUser: updatedUser,
             users: state.users.map(u => u.email.toLowerCase() === email.toLowerCase() ? updatedUser : u),
           }));
+          resolvedUserId = existing.id;
         } else {
           const newUser: UserAccount = {
             id: uuidv4(),
@@ -750,19 +757,50 @@ export const useStore = create<CRMStore>()(
             derniereConnexion: new Date().toISOString(),
           };
           set(state => ({ users: [...state.users, newUser], currentUser: newUser }));
+          resolvedUserId = newUser.id;
         }
+
+        // Initialize user space & load data from Supabase (background)
+        supaService.ensureUserSpaceExists(resolvedUserId, email)
+          .then(() => supaService.fetchUserPersonalTasks(resolvedUserId))
+          .then(tasks => {
+            if (tasks.length > 0) {
+              set(state => ({
+                personalTasks: [
+                  ...state.personalTasks.filter(t => t.userId !== resolvedUserId),
+                  ...tasks,
+                ],
+              }));
+            }
+          })
+          .then(() => supaService.fetchUserPersonalNotes(resolvedUserId))
+          .then(notes => {
+            if (notes.length > 0) {
+              set(state => ({
+                personalNotes: [
+                  ...state.personalNotes.filter(n => n.userId !== resolvedUserId),
+                  ...notes,
+                ],
+              }));
+            }
+          })
+          .catch(err => console.warn('[Supabase] User space init failed:', err));
       },
 
       // ─── Personal Tasks & Notes ────────────────────────────────────────────
       addPersonalTask: (task: any) => {
         const maxOrdre = Math.max(0, ...get().personalTasks.map(t => t.ordre ?? 0));
-        set(state => ({ personalTasks: [{ ...task, id: uuidv4(), dateCreation: new Date().toISOString(), subtasks: task.subtasks || [], ordre: maxOrdre + 1 }, ...state.personalTasks] }));
+        const newTask: PersonalTask = { ...task, id: uuidv4(), dateCreation: new Date().toISOString(), subtasks: task.subtasks || [], ordre: maxOrdre + 1 };
+        set(state => ({ personalTasks: [newTask, ...state.personalTasks] }));
+        supaService.syncPersonalTask(newTask);
       },
       updatePersonalTask: (id: string, updates: any) => {
         set(state => ({ personalTasks: state.personalTasks.map(t => t.id === id ? { ...t, ...updates } : t) }));
+        supaService.updatePersonalTaskRemote(id, updates);
       },
       deletePersonalTask: (id: string) => {
         set(state => ({ personalTasks: state.personalTasks.filter(t => t.id !== id) }));
+        supaService.deletePersonalTaskRemote(id);
       },
       reorderPersonalTasks: (orderedIds: string[]) => {
         set(state => ({
@@ -771,16 +809,22 @@ export const useStore = create<CRMStore>()(
             return idx >= 0 ? { ...t, ordre: idx } : t;
           }),
         }));
+        supaService.reorderPersonalTasksRemote(orderedIds.map((id, idx) => ({ id, ordre: idx })));
       },
       addPersonalNote: (note: any) => {
         const maxOrdre = Math.max(0, ...get().personalNotes.map(n => n.ordre ?? 0));
-        set(state => ({ personalNotes: [{ ...note, id: uuidv4(), dateCreation: new Date().toISOString(), dateModification: new Date().toISOString(), ordre: maxOrdre + 1 }, ...state.personalNotes] }));
+        const newNote: PersonalNote = { ...note, id: uuidv4(), dateCreation: new Date().toISOString(), dateModification: new Date().toISOString(), ordre: maxOrdre + 1 };
+        set(state => ({ personalNotes: [newNote, ...state.personalNotes] }));
+        supaService.syncPersonalNote(newNote);
       },
       updatePersonalNote: (id: string, updates: any) => {
-        set(state => ({ personalNotes: state.personalNotes.map(n => n.id === id ? { ...n, ...updates, dateModification: new Date().toISOString() } : n) }));
+        const fullUpdates = { ...updates, dateModification: new Date().toISOString() };
+        set(state => ({ personalNotes: state.personalNotes.map(n => n.id === id ? { ...n, ...fullUpdates } : n) }));
+        supaService.updatePersonalNoteRemote(id, fullUpdates);
       },
       deletePersonalNote: (id: string) => {
         set(state => ({ personalNotes: state.personalNotes.filter(n => n.id !== id) }));
+        supaService.deletePersonalNoteRemote(id);
       },
       reorderPersonalNotes: (orderedIds: string[]) => {
         set(state => ({
@@ -789,6 +833,7 @@ export const useStore = create<CRMStore>()(
             return idx >= 0 ? { ...n, ordre: idx } : n;
           }),
         }));
+        supaService.reorderPersonalNotesRemote(orderedIds.map((id, idx) => ({ id, ordre: idx })));
       },
 
       addUser: (userData) => {
@@ -820,6 +865,29 @@ export const useStore = create<CRMStore>()(
       addAuditLog: (logData) => {
         const log: AuditLog = { ...logData, id: uuidv4() };
         set(state => ({ auditLogs: [log, ...state.auditLogs].slice(0, 500) }));
+      },
+
+      // ─── Supabase Sync Actions ────────────────────────────────────────────
+      loadUserDataFromSupabase: async (userId: string) => {
+        const [tasks, notes] = await Promise.all([
+          supaService.fetchUserPersonalTasks(userId),
+          supaService.fetchUserPersonalNotes(userId),
+        ]);
+        if (tasks.length > 0) {
+          set(state => ({
+            personalTasks: [...state.personalTasks.filter(t => t.userId !== userId), ...tasks],
+          }));
+        }
+        if (notes.length > 0) {
+          set(state => ({
+            personalNotes: [...state.personalNotes.filter(n => n.userId !== userId), ...notes],
+          }));
+        }
+      },
+
+      initUserSpace: async (userId: string, email: string) => {
+        await supaService.ensureUserSpaceExists(userId, email);
+        await get().loadUserDataFromSupabase(userId);
       },
 
       // ─── UI Actions ────────────────────────────────────────────────────────
@@ -1054,3 +1122,4 @@ export const selectDashboardStats = (state: CRMStore) => {
       .reduce((sum, s) => sum + s.montantMensuel, 0),
   };
 };
+

@@ -408,6 +408,10 @@ export interface CRMStore {
   // Internal audit helper
   _audit: (action: string, section?: string, details?: string) => void;
 
+  // Actions — Supabase Sync
+  loadUserDataFromSupabase: (userId: string) => Promise<void>;
+  initUserSpace: (userId: string, email: string) => Promise<void>;
+
   // Actions — Personal Space
   personalTasks: PersonalTask[];
   personalNotes: PersonalNote[];

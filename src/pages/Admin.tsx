@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Shield, Users, Plus, Edit2, Trash2, Eye, EyeOff,
   LayoutDashboard, Briefcase, FolderKanban, Clock,
@@ -12,6 +12,9 @@ import { useStore } from '../store/useStore';
 import { UserAccount, UserRole, SectionPermission, Workspace, Invitation } from '../types';
 import { hashPassword } from '../utils/crypto';
 import { toast } from '../components/ui/Toast';
+import { isSupabaseConfigured } from '../lib/supabaseAuth';
+import { fetchAuditLogs } from '../lib/supabaseService';
+import type { AuditLog } from '../types';
 
 // ─── Permission section config ────────────────────────────────────────────────
 const SECTION_CONFIG: { id: SectionPermission; label: string; icon: React.FC<{ className?: string }> }[] = [
@@ -363,6 +366,28 @@ export const Admin: React.FC = () => {
   const [logPage, setLogPage] = useState(1);
   const LOG_PAGE_SIZE = 50;
 
+  // Supabase logs
+  const [supabaseLogs, setSupabaseLogs] = useState<AuditLog[]>([]);
+  const [logsSource, setLogsSource] = useState<'local' | 'supabase'>('local');
+  const [logsLoading, setLogsLoading] = useState(false);
+
+  const refreshLogs = useCallback(() => {
+    if (!isSupabaseConfigured()) return;
+    setLogsLoading(true);
+    fetchAuditLogs({ limit: 1000 })
+      .then(logs => {
+        if (logs.length > 0) {
+          setSupabaseLogs(logs);
+          setLogsSource('supabase');
+        }
+      })
+      .finally(() => setLogsLoading(false));
+  }, []);
+
+  useEffect(() => {
+    refreshLogs();
+  }, [refreshLogs]);
+
   const freelancerOptions = freelancers.map(f => ({
     id: f.id,
     label: `${f.prenom} ${f.nom} — ${f.entreprise}`,
@@ -377,9 +402,12 @@ export const Admin: React.FC = () => {
     inactifs: users.filter(u => !u.isActive).length,
   }), [users]);
 
+  // Source des logs : Supabase si disponible, sinon local
+  const activeLogs = logsSource === 'supabase' ? supabaseLogs : auditLogs;
+
   // Filtered logs
   const filteredLogs = useMemo(() => {
-    return auditLogs.filter(log => {
+    return activeLogs.filter(log => {
       const matchSearch = !logSearch ||
         log.userNom.toLowerCase().includes(logSearch.toLowerCase()) ||
         log.action.toLowerCase().includes(logSearch.toLowerCase()) ||
@@ -390,18 +418,18 @@ export const Admin: React.FC = () => {
       const matchDateTo = !logDateTo || logDate <= logDateTo;
       return matchSearch && matchAction && matchDateFrom && matchDateTo;
     });
-  }, [auditLogs, logSearch, logActionFilter, logDateFrom, logDateTo]);
+  }, [activeLogs, logSearch, logActionFilter, logDateFrom, logDateTo]);
 
   // Audit stats
   const auditStats = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
-    const todayLogs = auditLogs.filter(l => l.date.startsWith(today)).length;
+    const todayLogs = activeLogs.filter(l => l.date.startsWith(today)).length;
     const actionBreakdown: Record<string, number> = {};
-    auditLogs.forEach(l => { actionBreakdown[l.action] = (actionBreakdown[l.action] || 0) + 1; });
+    activeLogs.forEach(l => { actionBreakdown[l.action] = (actionBreakdown[l.action] || 0) + 1; });
     const topActions = Object.entries(actionBreakdown).sort((a, b) => b[1] - a[1]).slice(0, 5);
-    const uniqueUsers = new Set(auditLogs.map(l => l.userNom)).size;
-    return { total: auditLogs.length, todayLogs, topActions, uniqueUsers };
-  }, [auditLogs]);
+    const uniqueUsers = new Set(activeLogs.map(l => l.userNom)).size;
+    return { total: activeLogs.length, todayLogs, topActions, uniqueUsers };
+  }, [activeLogs]);
 
   const paginatedLogs = filteredLogs.slice(0, logPage * LOG_PAGE_SIZE);
 
@@ -579,7 +607,7 @@ export const Admin: React.FC = () => {
     setTimeout(() => setCopiedToken(null), 2000);
   };
 
-  const uniqueActions = useMemo(() => [...new Set(auditLogs.map(l => l.action))], [auditLogs]);
+  const uniqueActions = useMemo(() => [...new Set(activeLogs.map(l => l.action))], [activeLogs]);
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleString('fr-FR', {
@@ -944,6 +972,26 @@ export const Admin: React.FC = () => {
       {/* ── LOGS TAB ───────────────────────────────────────────────────── */}
       {activeTab === 'logs' && (
         <div className="space-y-5">
+          {/* Source indicator + refresh */}
+          <div className="flex items-center gap-3">
+            <span className={clsx(
+              'text-xs px-2 py-1 rounded-full',
+              logsSource === 'supabase' ? 'bg-green-500/20 text-green-400' : 'bg-slate-500/20 text-slate-400'
+            )}>
+              {logsSource === 'supabase' ? 'Supabase (cloud)' : 'Local (navigateur)'}
+            </span>
+            {isSupabaseConfigured() && (
+              <button
+                onClick={refreshLogs}
+                disabled={logsLoading}
+                className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={clsx('w-3.5 h-3.5', logsLoading && 'animate-spin')} />
+                Rafraîchir
+              </button>
+            )}
+          </div>
+
           {/* Audit Stats */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-card border border-card-border rounded-xl p-4">
