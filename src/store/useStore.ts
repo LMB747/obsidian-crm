@@ -593,18 +593,27 @@ export const useStore = create<CRMStore>()(
 
       // Sync API session user into Zustand currentUser
       syncSessionUser: ({ email, role, nom, prenom }: { email: string; role: string; nom: string; prenom: string }) => {
+        const permissionsByRole: Record<string, string[]> = {
+          admin: ['dashboard','clients','freelancers','projects','worktracking','invoices','documents','snooze','analytics','settings','admin'],
+          freelancer: ['dashboard','projects','worktracking'],
+          viewer: ['dashboard'],
+        };
+        const permissions = permissionsByRole[role] || permissionsByRole.viewer;
+
         const existing = get().users.find(u => u.email.toLowerCase() === email.toLowerCase());
         if (existing) {
-          set({ currentUser: { ...existing, role: role as any, derniereConnexion: new Date().toISOString() } });
+          // Keep existing permissions if already set, otherwise use role defaults
+          const mergedPermissions = existing.permissions?.length > 0 ? existing.permissions : permissions;
+          set({ currentUser: { ...existing, role: role as any, permissions: mergedPermissions as any, derniereConnexion: new Date().toISOString() } });
         } else {
           const newUser: UserAccount = {
             id: uuidv4(),
             email,
             nom,
             prenom,
-            role: (role as any) || 'admin',
+            role: (role as any) || 'viewer',
             passwordHash: '',
-            permissions: ['dashboard','clients','freelancers','projects','worktracking','invoices','documents','snooze','analytics','settings','admin'],
+            permissions: permissions as any,
             isActive: true,
             dateCreation: new Date().toISOString().split('T')[0],
             derniereConnexion: new Date().toISOString(),
