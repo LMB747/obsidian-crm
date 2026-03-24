@@ -347,6 +347,34 @@ export const Admin: React.FC = () => {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [clearLogsConfirm, setClearLogsConfirm] = useState(false);
 
+  // ── Sync users from Supabase profiles on mount ──────────────────────────
+  const [supaSynced, setSupaSynced] = useState(false);
+  useEffect(() => {
+    if (supaSynced) return;
+    import('../lib/supabaseAuth').then(({ listUsers }) => {
+      listUsers().then(profiles => {
+        if (!profiles || profiles.length === 0) return;
+        const localIds = new Set(users.map(u => u.id));
+        for (const p of profiles) {
+          if (!localIds.has(p.id)) {
+            // Profile exists in Supabase but not locally — add it
+            addUser({
+              id: p.id,
+              email: p.email || '',
+              nom: p.nom || '',
+              prenom: p.prenom || '',
+              role: (p.role as any) || 'viewer',
+              permissions: (p.permissions as any) || [],
+              isActive: p.is_active !== false,
+              passwordHash: '',
+            } as any);
+          }
+        }
+        setSupaSynced(true);
+      });
+    }).catch(() => {});
+  }, [supaSynced]);
+
   // Workspace state
   const [wsModalOpen, setWsModalOpen] = useState(false);
   const [wsNom, setWsNom] = useState('');
