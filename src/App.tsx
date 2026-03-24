@@ -23,6 +23,8 @@ const ProspectionCRM  = lazy(() => import('./pages/ProspectionCRM').then(m => ({
 const CalendarPage    = lazy(() => import('./pages/Calendar').then(m => ({ default: m.Calendar })));
 const PersonalSpace   = lazy(() => import('./pages/PersonalSpace').then(m => ({ default: m.PersonalSpace })));
 const ClientPortal    = lazy(() => import('./pages/ClientPortal'));
+const Proposals        = lazy(() => import('./pages/Proposals'));
+const DealPipeline    = lazy(() => import('./pages/DealPipeline'));
 const NotFound        = lazy(() => import('./pages/NotFound').then(m => ({ default: m.NotFound })));
 
 const pageMap: Record<string, React.ComponentType> = {
@@ -43,6 +45,8 @@ const pageMap: Record<string, React.ComponentType> = {
   admin:               Admin,
   'freelancer-portal': FreelancerPortal,
   'client-portal': ClientPortal,
+  'proposals': Proposals,
+  'pipeline': DealPipeline,
 };
 
 // ─── Helper: sync user into Zustand store ──────────────────────────────────

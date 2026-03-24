@@ -338,6 +338,52 @@ export interface ClientPortalAccess {
   isActive: boolean;
 }
 
+// ─── PROJECT TEMPLATES ───────────────────────────────────────────────────────
+export interface ProjectTemplate {
+  id: string;
+  nom: string;
+  description: string;
+  categorie: string;
+  tasks: Array<{
+    titre: string;
+    statut: string;
+    priorite: string;
+    heuresEstimees: number;
+    subCategoryId?: string;
+  }>;
+  milestones: Array<{ titre: string; }>;
+  subCategories: Array<{ nom: string; couleur: string; }>;
+  createdBy: string;
+  dateCreation: string;
+}
+
+// ─── DEVIS / PROPOSITIONS ────────────────────────────────────────────────────
+export type DevisStatut = 'brouillon' | 'envoyé' | 'accepté' | 'refusé' | 'expiré';
+
+export interface DevisItem {
+  id: string;
+  description: string;
+  quantite: number;
+  prixUnitaire: number;
+  total: number;
+}
+
+export interface Devis {
+  id: string;
+  numero: string;
+  clientId: string;
+  clientNom: string;
+  statut: DevisStatut;
+  items: DevisItem[];
+  sousTotal: number;
+  tva: number;
+  total: number;
+  dateCreation: string;
+  dateExpiration: string;
+  notes: string;
+  conditions: string;
+}
+
 // ─── STORE TYPES ──────────────────────────────────────────────────────────────
 export interface CRMStore {
   // Data
@@ -493,6 +539,20 @@ export interface CRMStore {
   createClientPortalAccess: (access: Omit<ClientPortalAccess, 'id' | 'token' | 'dateCreation'>) => ClientPortalAccess;
   deleteClientPortalAccess: (id: string) => void;
   getClientPortalByToken: (token: string) => ClientPortalAccess | undefined;
+
+  // Actions — Templates
+  projectTemplates: ProjectTemplate[];
+  saveProjectTemplate: (projectId: string, nom: string, description: string) => void;
+  deleteProjectTemplate: (id: string) => void;
+  createProjectFromTemplate: (templateId: string, projectData: Omit<Project, 'id' | 'taches' | 'milestones' | 'subCategories' | 'activityLog' | 'objectives' | 'livrables' | 'depensesProjet' | 'liensAvancement'>) => string;
+
+  // Actions — Devis
+  devis: Devis[];
+  addDevis: (devis: Omit<Devis, 'id' | 'numero' | 'dateCreation'>) => void;
+  updateDevis: (id: string, updates: Partial<Devis>) => void;
+  deleteDevis: (id: string) => void;
+  convertDevisToInvoice: (devisId: string) => void;
+  convertDevisToProject: (devisId: string) => void;
 }
 
 export interface Notification {

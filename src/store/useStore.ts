@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import { CRMStore, Client, Freelancer, Project, Invoice, SnoozeSubscription, Activity, Task, AgencySettings, TimerSession, UserAccount, AuditLog, TaskNote, ProjectActivity, Notification, Workspace, Invitation, Objective, ProjectSubCategory, UnifiedTag, PersonalTask, PersonalNote, ClientPortalAccess } from '../types';
+import { CRMStore, Client, Freelancer, Project, Invoice, SnoozeSubscription, Activity, Task, AgencySettings, TimerSession, UserAccount, AuditLog, TaskNote, ProjectActivity, Notification, Workspace, Invitation, Objective, ProjectSubCategory, UnifiedTag, PersonalTask, PersonalNote, ClientPortalAccess, ProjectTemplate, Devis } from '../types';
 import { toast } from '../components/ui/Toast';
 import { verifyPassword } from '../utils/crypto';
 import * as supaService from '../lib/supabaseService';
@@ -62,6 +62,8 @@ export const useStore = create<CRMStore>()(
       personalTasks: [],
       personalNotes: [],
       clientPortalAccesses: [],
+      projectTemplates: [],
+      devis: [],
 
       // ─── Audit helper (private) ──────────────────────────────────────────
       _audit: (action: string, section?: string, details?: string) => {
@@ -494,6 +496,73 @@ export const useStore = create<CRMStore>()(
         get()._audit('delete_invoice', 'invoices', inv?.numero || id);
       },
 
+      // ─── Devis Actions ────────────────────────────────────────────────────
+      addDevis: (devisData) => {
+        const count = get().devis.length + 1;
+        const newDevis: Devis = {
+          ...devisData,
+          id: uuidv4(),
+          numero: `DEV-${String(count).padStart(4, '0')}`,
+          dateCreation: new Date().toISOString(),
+        };
+        set(state => ({ devis: [...state.devis, newDevis] }));
+        get()._audit('create_devis', 'devis', `Devis ${newDevis.numero} pour ${newDevis.clientNom}`);
+      },
+      updateDevis: (id, updates) => {
+        set(state => ({ devis: state.devis.map(d => d.id === id ? { ...d, ...updates } : d) }));
+      },
+      deleteDevis: (id) => {
+        set(state => ({ devis: state.devis.filter(d => d.id !== id) }));
+        get()._audit('delete_devis', 'devis', 'Devis supprimé');
+      },
+      convertDevisToInvoice: (devisId) => {
+        const devis = get().devis.find(d => d.id === devisId);
+        if (!devis) return;
+        get().addInvoice({
+          clientId: devis.clientId,
+          clientNom: devis.clientNom,
+          projectId: '',
+          projectNom: '',
+          numero: `FAC-${String(get().invoices.length + 1).padStart(4, '0')}`,
+          statut: 'brouillon',
+          dateEmission: new Date().toISOString().slice(0, 10),
+          dateEcheance: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+          items: devis.items.map(i => ({ ...i })),
+          sousTotal: devis.sousTotal,
+          tva: devis.tva,
+          total: devis.total,
+          notes: devis.notes,
+        });
+        get().updateDevis(devisId, { statut: 'accepté' });
+        toast.success('Facture créée depuis le devis');
+      },
+      convertDevisToProject: (devisId) => {
+        const devis = get().devis.find(d => d.id === devisId);
+        if (!devis) return;
+        get().addProject({
+          nom: `Projet — ${devis.clientNom}`,
+          description: `Projet créé depuis le devis ${devis.numero}`,
+          clientId: devis.clientId,
+          clientNom: devis.clientNom,
+          statut: 'en cours',
+          priorite: 'normale',
+          dateDebut: new Date().toISOString().slice(0, 10),
+          dateFin: new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10),
+          budget: devis.total,
+          depenses: 0,
+          progression: 0,
+          taches: [],
+          milestones: [],
+          equipe: [],
+          freelancerIds: [],
+          tags: [],
+          categorie: '',
+          activityLog: [],
+        });
+        get().updateDevis(devisId, { statut: 'accepté' });
+        toast.success('Projet créé depuis le devis');
+      },
+
       // ─── Snooze Actions ────────────────────────────────────────────────────
       addSnoozeSubscription: (subData) => {
         const newSub: SnoozeSubscription = { ...subData, id: uuidv4() };
@@ -892,6 +961,79 @@ export const useStore = create<CRMStore>()(
         return get().clientPortalAccesses.find(a => a.token === token && a.isActive && new Date(a.expiresAt) > new Date());
       },
 
+      // ─── Template Actions ─────────────────────────────────────────────────
+      saveProjectTemplate: (projectId, nom, description) => {
+        const project = get().projects.find(p => p.id === projectId);
+        if (!project) return;
+        const template: ProjectTemplate = {
+          id: uuidv4(),
+          nom,
+          description,
+          categorie: project.categorie,
+          tasks: project.taches.map(t => ({
+            titre: t.titre,
+            statut: 'todo',
+            priorite: t.priorite,
+            heuresEstimees: t.heuresEstimees,
+            subCategoryId: t.subCategoryId,
+          })),
+          milestones: project.milestones.map(m => ({ titre: m.titre })),
+          subCategories: (project.subCategories || []).map(s => ({ nom: s.nom, couleur: s.couleur })),
+          createdBy: get().currentUser?.id || '',
+          dateCreation: new Date().toISOString(),
+        };
+        set(state => ({ projectTemplates: [...state.projectTemplates, template] }));
+        get()._audit('create_template', 'projects', `Template "${nom}" créé depuis ${project.nom}`);
+        toast.success(`Template "${nom}" sauvegardé`);
+      },
+      deleteProjectTemplate: (id) => {
+        set(state => ({ projectTemplates: state.projectTemplates.filter(t => t.id !== id) }));
+      },
+      createProjectFromTemplate: (templateId, projectData) => {
+        const template = get().projectTemplates.find(t => t.id === templateId);
+        if (!template) return '';
+        const projectId = uuidv4();
+        const subCats = template.subCategories.map(s => ({ id: uuidv4(), ...s, description: '', ordre: 0 }));
+        const tasks = template.tasks.map(t => ({
+          id: uuidv4(),
+          titre: t.titre,
+          description: '',
+          statut: 'todo' as const,
+          priorite: t.priorite as any,
+          assigneA: '',
+          assigneAIds: [],
+          heuresEstimees: t.heuresEstimees,
+          heuresReelles: 0,
+          dateDebut: projectData.dateDebut,
+          dateEcheance: projectData.dateFin,
+          tags: [] as string[],
+          notes: [],
+          subCategoryId: t.subCategoryId ? subCats[0]?.id : undefined,
+        }));
+        const milestones = template.milestones.map(m => ({
+          id: uuidv4(),
+          titre: m.titre,
+          dateEcheance: projectData.dateFin,
+          complete: false,
+        }));
+        const newProject: Project = {
+          ...projectData,
+          id: projectId,
+          taches: tasks,
+          milestones,
+          subCategories: subCats,
+          activityLog: [],
+          objectives: [],
+          livrables: [],
+          depensesProjet: [],
+          liensAvancement: [],
+          categorie: template.categorie,
+        };
+        set(state => ({ projects: [...state.projects, newProject] }));
+        get()._audit('create_project_from_template', 'projects', `${newProject.nom} depuis template "${template.nom}"`);
+        return projectId;
+      },
+
       addUser: (userData) => {
         const newUser: UserAccount = { ...userData, id: (userData as any).id || uuidv4(), dateCreation: new Date().toISOString().split('T')[0] };
         set(state => ({ users: [...state.users, newUser] }));
@@ -1167,6 +1309,8 @@ export const useStore = create<CRMStore>()(
         personalTasks: state.personalTasks,
         personalNotes: state.personalNotes,
         clientPortalAccesses: state.clientPortalAccesses,
+        projectTemplates: state.projectTemplates,
+        devis: state.devis,
       }),
     }
   )

@@ -3,7 +3,7 @@ import {
   Plus, FolderKanban, CheckSquare, Clock, Euro,
   Calendar, Users, ChevronDown, ChevronRight,
   Circle, CheckCircle2, AlertCircle, Pause,
-  Edit2, Trash2, Target, ArrowUpRight, BarChart3,
+  Edit2, Trash2, Target, ArrowUpRight, BarChart3, Copy,
   List, Columns, AlertTriangle, Download, Search, X,
   Activity, MessageSquare, FolderPlus, ArrowRight, Flag, FileText,
   Crosshair, Layers, Tag, Package, Wallet, GanttChart,
@@ -22,6 +22,9 @@ import { TagPicker } from '../components/ui/TagPicker';
 import { ProjectChat } from '../components/chat/ProjectChat';
 import { FileManager } from '../components/files/FileManager';
 import clsx from 'clsx';
+import { toast } from '../components/ui/Toast';
+import { GanttView } from '../components/gantt/GanttView';
+import { ResourcePlanning } from '../components/planning/ResourcePlanning';
 
 const statusConfig: Record<ProjectStatus, { label: string; variant: any; icon: React.FC<any>; color: string }> = {
   'planification': { label: 'Planification', variant: 'info',    icon: Circle,        color: 'text-cyan-400' },
@@ -287,16 +290,17 @@ const ProjectTeam: React.FC<{
 
 export const Projects: React.FC = () => {
   const store = useStore();
-  const { projects, updateProject, deleteProject, updateTask, addTask, deleteTask, searchQuery, clients, addProject, addFreelancerToProject, removeFreelancerFromProject, freelancers, addObjective, updateObjective, deleteObjective, addSubCategory, deleteSubCategory, addLienAvancement, deleteLienAvancement, updateLivrable, currentUser } = store;
+  const { projects, updateProject, deleteProject, updateTask, addTask, deleteTask, searchQuery, clients, addProject, addFreelancerToProject, removeFreelancerFromProject, freelancers, addObjective, updateObjective, deleteObjective, addSubCategory, deleteSubCategory, addLienAvancement, deleteLienAvancement, updateLivrable, currentUser, projectTemplates, saveProjectTemplate, createProjectFromTemplate } = store;
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [expandedProject, setExpandedProject] = useState<string | null>(projects[0]?.id || null);
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'tous'>('tous');
   const [view, setView] = useState<'list' | 'kanban' | 'gantt'>('list');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [addTaskModal, setAddTaskModal] = useState<string | null>(null);
-  const [newTask, setNewTask] = useState({ titre: '', description: '', assigneA: '', assigneAIds: [] as string[], dateEcheance: '', heuresEstimees: 8, priorite: 'normale' as Task['priorite'], statut: 'todo' as Task['statut'], tags: [] as string[] });
+  const [newTask, setNewTask] = useState({ titre: '', description: '', assigneA: '', assigneAIds: [] as string[], dateEcheance: '', heuresEstimees: 8, priorite: 'normale' as Task['priorite'], statut: 'todo' as Task['statut'], tags: [] as string[], dependsOn: [] as string[] });
   const [taskFreelancerFilter, setTaskFreelancerFilter] = useState<string>('all');
-  const [projectTab, setProjectTab] = useState<Record<string, 'tasks' | 'equipe' | 'objectives' | 'timeline' | 'livrables' | 'budget' | 'liens' | 'chat' | 'fichiers'>>({});
+  const [projectTab, setProjectTab] = useState<Record<string, 'tasks' | 'equipe' | 'objectives' | 'timeline' | 'livrables' | 'budget' | 'liens' | 'chat' | 'fichiers' | 'gantt'>>({});
+  const [showResourcePlanning, setShowResourcePlanning] = useState(false);
 
   // Lien d'avancement modal
   const [lienModalOpen, setLienModalOpen] = useState<string | null>(null);
@@ -314,6 +318,7 @@ export const Projects: React.FC = () => {
   // ── Add Project Modal ──────────────────────────────────────────────────────
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newProject, setNewProject] = useState(defaultNewProject);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('');
 
   // ── Edit Project Modal ─────────────────────────────────────────────────────
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -368,28 +373,49 @@ export const Projects: React.FC = () => {
     if (!newProject.nom.trim()) return;
     const selectedClient = clients.find(c => c.id === newProject.clientId);
     const clientNom = selectedClient ? (selectedClient.entreprise || selectedClient.nom) : '';
-    addProject({
-      nom: newProject.nom,
-      description: newProject.description,
-      clientId: newProject.clientId,
-      clientNom,
-      statut: newProject.statut,
-      priorite: newProject.priorite,
-      categorie: newProject.categorie,
-      dateDebut: newProject.dateDebut,
-      dateFin: newProject.dateFin,
-      budget: newProject.budget,
-      depenses: 0,
-      progression: 0,
-      taches: [],
-      milestones: [],
-      equipe: [],
-      freelancerIds: newProject.freelancerIds || [],
-      tags: newProject.tags,
-      activityLog: [],
-    });
+    if (selectedTemplate) {
+      createProjectFromTemplate(selectedTemplate, {
+        nom: newProject.nom,
+        description: newProject.description,
+        clientId: newProject.clientId,
+        clientNom,
+        statut: newProject.statut,
+        priorite: newProject.priorite,
+        categorie: newProject.categorie,
+        dateDebut: newProject.dateDebut,
+        dateFin: newProject.dateFin,
+        budget: newProject.budget,
+        depenses: 0,
+        progression: 0,
+        equipe: [],
+        freelancerIds: newProject.freelancerIds || [],
+        tags: newProject.tags,
+      });
+    } else {
+      addProject({
+        nom: newProject.nom,
+        description: newProject.description,
+        clientId: newProject.clientId,
+        clientNom,
+        statut: newProject.statut,
+        priorite: newProject.priorite,
+        categorie: newProject.categorie,
+        dateDebut: newProject.dateDebut,
+        dateFin: newProject.dateFin,
+        budget: newProject.budget,
+        depenses: 0,
+        progression: 0,
+        taches: [],
+        milestones: [],
+        equipe: [],
+        freelancerIds: newProject.freelancerIds || [],
+        tags: newProject.tags,
+        activityLog: [],
+      });
+    }
     setIsAddModalOpen(false);
     setNewProject(defaultNewProject);
+    setSelectedTemplate('');
   };
 
   const filtered = useMemo(() => {
@@ -435,11 +461,24 @@ export const Projects: React.FC = () => {
     return new Date(p.dateFin).getTime() < todayMs;
   };
 
+  const canStartTask = (task: Task, projectTasks: Task[]) => {
+    if (!task.dependsOn?.length) return true;
+    return task.dependsOn.every(depId => {
+      const dep = projectTasks.find(t => t.id === depId);
+      return dep?.statut === 'fait';
+    });
+  };
+
   const handleTaskStatus = (projectId: string, taskId: string, currentStatus: Task['statut']) => {
     const next: Record<Task['statut'], Task['statut']> = { 'todo': 'en cours', 'en cours': 'fait', 'fait': 'todo' };
+    // Block starting a task if dependencies aren't done
+    const project = projects.find(p => p.id === projectId);
+    if (project && currentStatus === 'todo') {
+      const task = project.taches.find(t => t.id === taskId);
+      if (task && !canStartTask(task, project.taches)) return;
+    }
     updateTask(projectId, taskId, { statut: next[currentStatus] });
     // Update project progression
-    const project = projects.find(p => p.id === projectId);
     if (project) {
       const updatedTasks = project.taches.map(t => t.id === taskId ? { ...t, statut: next[currentStatus] } : t);
       const done = updatedTasks.filter(t => t.statut === 'fait').length;
@@ -451,7 +490,7 @@ export const Projects: React.FC = () => {
   const handleAddTask = (projectId: string) => {
     addTask(projectId, { ...newTask, heuresReelles: 0, notes: [] });
     setAddTaskModal(null);
-    setNewTask({ titre: '', description: '', assigneA: '', assigneAIds: [], dateEcheance: '', heuresEstimees: 8, priorite: 'normale', statut: 'todo', tags: [] });
+    setNewTask({ titre: '', description: '', assigneA: '', assigneAIds: [], dateEcheance: '', heuresEstimees: 8, priorite: 'normale', statut: 'todo', tags: [], dependsOn: [] });
   };
 
   return (
@@ -518,6 +557,14 @@ export const Projects: React.FC = () => {
               <GanttChart className="w-3.5 h-3.5 inline mr-1" /> Gantt
             </button>
           </div>
+          {/* Resource Planning Toggle */}
+          <button
+            onClick={() => setShowResourcePlanning(!showResourcePlanning)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-card border border-card-border text-slate-400 rounded-lg text-xs hover:text-white hover:border-primary-500/30 transition-all"
+          >
+            <Users className="w-3.5 h-3.5" />
+            {showResourcePlanning ? 'Masquer' : 'Planning'}
+          </button>
           {/* Export CSV Button */}
           <button
             onClick={() => exportProjectsCSV(filtered)}
@@ -536,6 +583,17 @@ export const Projects: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* ── Resource Planning ────────────────────────────────────────────── */}
+      {showResourcePlanning && (
+        <div className="bg-card border border-card-border rounded-xl p-4 mb-6">
+          <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+            <Users className="w-4 h-4 text-primary-400" />
+            Planning des ressources (30 jours)
+          </h3>
+          <ResourcePlanning freelancers={freelancers} projects={projects} />
+        </div>
+      )}
 
       {/* ── Kanban View ──────────────────────────────────────────────────── */}
       {view === 'kanban' && (
@@ -779,6 +837,15 @@ export const Projects: React.FC = () => {
                       </div>
                       <div className="flex items-center gap-2">
                         <button
+                          onClick={() => {
+                            const nom = prompt('Nom du template:');
+                            if (nom) saveProjectTemplate(project.id, nom, project.description);
+                          }}
+                          className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-semibold text-slate-400 hover:text-primary-300 transition-colors"
+                        >
+                          <Copy className="w-3 h-3" /> Template
+                        </button>
+                        <button
                           onClick={() => openEditModal(project)}
                           title="Modifier"
                           className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-primary-300 border border-card-border px-2.5 py-1.5 rounded-lg hover:bg-primary-500/10 transition-all"
@@ -834,6 +901,7 @@ export const Projects: React.FC = () => {
                         { id: 'liens', label: 'Liens Prestataires', icon: Link },
                         { id: 'chat', label: 'Chat', icon: MessageCircle },
                         { id: 'fichiers', label: 'Fichiers', icon: Paperclip },
+                        { id: 'gantt', label: 'Gantt', icon: BarChart3 },
                         { id: 'timeline', label: 'Timeline', icon: Activity },
                       ] as const).map(tab => (
                         <button
@@ -850,6 +918,26 @@ export const Projects: React.FC = () => {
                         </button>
                       ))}
                     </div>
+
+                    {/* Gantt tab */}
+                    {(projectTab[project.id] ?? 'tasks') === 'gantt' && (
+                      <div className="p-4">
+                        <GanttView
+                          tasks={project.taches.map(t => ({
+                            id: t.id,
+                            titre: t.titre,
+                            dateDebut: project.dateDebut,
+                            dateFin: t.dateEcheance || project.dateFin,
+                            progression: t.statut === 'fait' ? 100 : t.statut === 'en cours' ? 50 : 0,
+                            statut: t.statut,
+                            assigneA: t.assigneA,
+                            dependsOn: t.dependsOn,
+                          }))}
+                          projectDebut={project.dateDebut}
+                          projectFin={project.dateFin}
+                        />
+                      </div>
+                    )}
 
                     {/* Timeline tab */}
                     {(projectTab[project.id] ?? 'tasks') === 'timeline' && (
@@ -1392,6 +1480,12 @@ export const Projects: React.FC = () => {
                                       <span className="text-xs text-slate-500">· {new Date(task.dateEcheance).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</span>
                                     )}
                                   </div>
+                                  {!canStartTask(task, project.taches) && task.statut === 'todo' && (
+                                    <p className="text-[10px] text-amber-400 flex items-center gap-1 mt-1">
+                                      <AlertCircle className="w-3 h-3" />
+                                      Bloquee par une tache pre-requise
+                                    </p>
+                                  )}
                                 </div>
                                 <div className="flex items-center gap-2 flex-shrink-0">
                                   <span className="text-xs text-slate-500">{task.heuresReelles}h/{task.heuresEstimees}h</span>
@@ -1568,6 +1662,36 @@ export const Projects: React.FC = () => {
               <input type="number" value={newTask.heuresEstimees} onChange={e => setNewTask(p => ({ ...p, heuresEstimees: Number(e.target.value) }))} className="w-full bg-obsidian-700 border border-card-border text-white text-sm rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-primary-500" min="0.5" step="0.5" />
             </div>
           </div>
+          {/* Dependencies */}
+          {(() => {
+            const proj = projects.find(p => p.id === addTaskModal);
+            const otherTasks = proj?.taches || [];
+            if (otherTasks.length === 0) return null;
+            return (
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Dependances</label>
+                <div className="space-y-1 mt-1 max-h-32 overflow-y-auto">
+                  {otherTasks.map(t => (
+                    <label key={t.id} className="flex items-center gap-2 text-xs text-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newTask.dependsOn?.includes(t.id) || false}
+                        onChange={e => {
+                          const deps = newTask.dependsOn || [];
+                          setNewTask(prev => ({
+                            ...prev,
+                            dependsOn: e.target.checked ? [...deps, t.id] : deps.filter(d => d !== t.id),
+                          }));
+                        }}
+                        className="rounded border-card-border bg-obsidian-700"
+                      />
+                      {t.titre}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           <div className="flex gap-3 pt-2">
             <button onClick={() => setAddTaskModal(null)} className="flex-1 py-2.5 rounded-xl border border-card-border text-slate-400 text-sm font-medium hover:bg-card-hover hover:text-white transition-all">Annuler</button>
             <button onClick={() => addTaskModal && handleAddTask(addTaskModal)} disabled={!newTask.titre} className="flex-1 py-2.5 rounded-xl bg-gradient-primary text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity">Créer la tâche</button>
@@ -1722,8 +1846,33 @@ export const Projects: React.FC = () => {
       </Modal>
 
       {/* ── Add Project Modal ────────────────────────────────────────────── */}
-      <Modal isOpen={isAddModalOpen} onClose={() => { setIsAddModalOpen(false); setNewProject(defaultNewProject); }} title="Nouveau Projet" size="lg">
+      <Modal isOpen={isAddModalOpen} onClose={() => { setIsAddModalOpen(false); setNewProject(defaultNewProject); setSelectedTemplate(''); }} title="Nouveau Projet" size="lg">
         <div className="space-y-4">
+          {/* Template selector */}
+          {projectTemplates.length > 0 && (
+            <div className="mb-4 p-3 bg-obsidian-800 rounded-xl border border-card-border">
+              <label className="text-xs text-slate-400 block mb-1">Ou créer depuis un template</label>
+              <select
+                value={selectedTemplate}
+                onChange={e => {
+                  const tpl = projectTemplates.find(t => t.id === e.target.value);
+                  if (tpl) {
+                    setNewProject(prev => ({ ...prev, categorie: tpl.categorie }));
+                    toast.success(`Template "${tpl.nom}" sélectionné — les tâches seront copiées`);
+                    setSelectedTemplate(e.target.value);
+                  } else {
+                    setSelectedTemplate('');
+                  }
+                }}
+                className={INPUT_CLASS}
+              >
+                <option value="">Choisir un template...</option>
+                {projectTemplates.map(t => (
+                  <option key={t.id} value={t.id}>{t.nom} ({t.tasks.length} tâches)</option>
+                ))}
+              </select>
+            </div>
+          )}
           {/* Nom */}
           <div>
             <label className="block text-xs font-semibold text-slate-400 mb-1.5">Nom <span className="text-accent-red">*</span></label>
