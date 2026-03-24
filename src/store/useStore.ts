@@ -589,6 +589,28 @@ export const useStore = create<CRMStore>()(
         set({ currentUser: null });
       },
 
+      // Sync API session user into Zustand currentUser
+      syncSessionUser: ({ email, role, nom, prenom }: { email: string; role: string; nom: string; prenom: string }) => {
+        const existing = get().users.find(u => u.email.toLowerCase() === email.toLowerCase());
+        if (existing) {
+          set({ currentUser: { ...existing, role: role as any, derniereConnexion: new Date().toISOString() } });
+        } else {
+          const newUser: UserAccount = {
+            id: uuidv4(),
+            email,
+            nom,
+            prenom,
+            role: (role as any) || 'admin',
+            passwordHash: '',
+            permissions: ['dashboard','clients','freelancers','projects','worktracking','invoices','documents','snooze','analytics','settings','admin'],
+            isActive: true,
+            dateCreation: new Date().toISOString().split('T')[0],
+            derniereConnexion: new Date().toISOString(),
+          };
+          set(state => ({ users: [...state.users, newUser], currentUser: newUser }));
+        }
+      },
+
       addUser: (userData) => {
         const newUser: UserAccount = { ...userData, id: uuidv4(), dateCreation: new Date().toISOString().split('T')[0] };
         set(state => ({ users: [...state.users, newUser] }));

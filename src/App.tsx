@@ -86,6 +86,14 @@ const App: React.FC = () => {
     const apiResult = await loginAPI(email, password);
     if (apiResult.success && apiResult.user) {
       setSessionUser(apiResult.user);
+      // Sync session user to Zustand store so the whole app recognizes the role
+      const nameParts = (apiResult.user.nom || '').split(' ');
+      useStore.getState().syncSessionUser({
+        email: apiResult.user.email,
+        role: apiResult.user.role as any || 'admin',
+        nom: nameParts.slice(1).join(' ') || apiResult.user.nom || '',
+        prenom: nameParts[0] || '',
+      });
       return { success: true };
     }
 

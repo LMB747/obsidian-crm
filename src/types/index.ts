@@ -388,6 +388,7 @@ export interface CRMStore {
   // Actions Auth
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
+  syncSessionUser: (data: { email: string; role: string; nom: string; prenom: string }) => void;
   addUser: (user: Omit<UserAccount, 'id' | 'dateCreation'>) => void;
   updateUser: (id: string, updates: Partial<UserAccount>) => void;
   deleteUser: (id: string) => void;
