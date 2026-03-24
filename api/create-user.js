@@ -1,33 +1,47 @@
 const { createClient } = require('@supabase/supabase-js');
 
-module.exports = function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+const VALID_ROLES = ['admin', 'freelancer', 'viewer'];
+
+module.exports = async function handler(req, res) {
+  // CORS
+  var origin = req.headers.origin || '';
+  var allowed = process.env.ALLOWED_ORIGIN || origin;
+  res.setHeader('Access-Control-Allow-Origin', allowed);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'POST only' });
 
-  var email = req.body?.email || '';
+  var email = (req.body?.email || '').trim();
   var password = req.body?.password || '';
-  var nom = req.body?.nom || '';
-  var prenom = req.body?.prenom || '';
-  var role = req.body?.role || 'viewer';
+  var nom = (req.body?.nom || '').trim();
+  var prenom = (req.body?.prenom || '').trim();
+  var role = (req.body?.role || 'viewer').trim();
 
+  // Input validation
   if (!email || !password) {
     return res.status(400).json({ success: false, error: 'Email et mot de passe requis.' });
   }
 
-  // Password minimum 6 chars for Supabase
+  // Email format validation
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ success: false, error: 'Format d\'email invalide.' });
+  }
+
   if (password.length < 6) {
     return res.status(400).json({ success: false, error: 'Le mot de passe doit faire au moins 6 caractères.' });
+  }
+
+  // Role whitelist validation
+  if (!VALID_ROLES.includes(role)) {
+    return res.status(400).json({ success: false, error: 'Rôle invalide. Valeurs acceptées : admin, freelancer, viewer.' });
   }
 
   var supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
   var serviceKey = process.env.SUPABASE_SERVICE_KEY || '';
 
   if (!supabaseUrl || !serviceKey) {
-    // Fallback: add to AUTH_USERS if no service key
     return res.status(500).json({
       success: false,
       error: 'SUPABASE_SERVICE_KEY non configuré. Ajoutez-le dans Vercel → Settings → Environment Variables.'
@@ -38,35 +52,42 @@ module.exports = function handler(req, res) {
     auth: { autoRefreshToken: false, persistSession: false }
   });
 
-  // Create user via admin API (doesn't affect current session)
-  supabase.auth.admin.createUser({
-    email: email,
-    password: password,
-    email_confirm: true,
-    user_metadata: { nom: nom, prenom: prenom, role: role }
-  }).then(function(result) {
+  try {
+    // Create user via admin API
+    var result = await supabase.auth.admin.createUser({
+      email: email,
+      password: password,
+      email_confirm: true,
+      user_metadata: { nom: nom, prenom: prenom, role: role }
+    });
+
     if (result.error) {
       var msg = result.error.message;
       if (msg.includes('already been registered')) msg = 'Cet email est déjà utilisé.';
       return res.status(400).json({ success: false, error: msg });
     }
 
-    // Also insert/update profile
     var userId = result.data.user.id;
-    supabase.from('profiles').upsert({
+
+    // Insert/update profile
+    var profileResult = await supabase.from('profiles').upsert({
       id: userId,
       email: email,
       nom: nom,
       prenom: prenom,
       role: role,
       is_active: true,
-    }).then(function() {
-      return res.status(200).json({
-        success: true,
-        user: { id: userId, email: email, nom: nom, prenom: prenom, role: role }
-      });
     });
-  }).catch(function(err) {
+
+    if (profileResult.error) {
+      return res.status(500).json({ success: false, error: 'Compte créé mais erreur profil: ' + profileResult.error.message });
+    }
+
+    return res.status(200).json({
+      success: true,
+      user: { id: userId, email: email, nom: nom, prenom: prenom, role: role }
+    });
+  } catch (err) {
     return res.status(500).json({ success: false, error: err.message || 'Erreur serveur' });
-  });
+  }
 };

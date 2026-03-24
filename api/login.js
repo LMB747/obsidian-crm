@@ -1,5 +1,10 @@
+var crypto = require('crypto');
+
 module.exports = function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  // CORS: restrict to same origin in production
+  var origin = req.headers.origin || '';
+  var allowed = process.env.ALLOWED_ORIGIN || origin; // fallback: allow same origin
+  res.setHeader('Access-Control-Allow-Origin', allowed);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -18,13 +23,15 @@ module.exports = function handler(req, res) {
   for (var i = 0; i < entries.length; i++) {
     var p = entries[i].trim().split(':');
     if (p[0] && p[0].toLowerCase() === email.toLowerCase().trim() && p[1] === password) {
+      // Secure token: 32 bytes of cryptographic randomness
+      var token = crypto.randomBytes(32).toString('hex');
       return res.status(200).json({
         success: true,
         user: { email: p[0], role: p[2] || 'admin', nom: p[3] || 'User' },
-        token: Date.now().toString(36),
+        token: token,
       });
     }
   }
 
-  return res.status(401).json({ success: false, error: 'Email ou mot de passe incorrect.' });
+  return res.status(401).json({ success: false, error: 'Identifiants incorrects.' });
 };

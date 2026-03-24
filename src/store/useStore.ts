@@ -122,12 +122,25 @@ export const useStore = create<CRMStore>()(
             c.id === id ? { ...c, ...updates, derniereActivite: new Date().toISOString().split('T')[0] } : c
           ),
         }));
+        // Sync clientNom in projects and invoices if nom changed
+        if (updates.nom) {
+          const newNom = updates.nom;
+          set((state) => ({
+            projects: state.projects.map(p => p.clientId === id ? { ...p, clientNom: newNom } : p),
+            invoices: state.invoices.map(i => i.clientId === id ? { ...i, clientNom: newNom } : i),
+          }));
+        }
       },
 
       deleteClient: (id) => {
         const client = get().clients.find(c => c.id === id);
-        set((state) => ({ clients: state.clients.filter((c) => c.id !== id) }));
-        toast.warning('Client supprimé');
+        // Cascade: unlink projects and invoices
+        set((state) => ({
+          clients: state.clients.filter((c) => c.id !== id),
+          projects: state.projects.map(p => p.clientId === id ? { ...p, clientId: '', clientNom: `${p.clientNom} (supprimé)` } : p),
+          invoices: state.invoices.map(i => i.clientId === id ? { ...i, clientId: '', clientNom: `${i.clientNom} (supprimé)` } : i),
+        }));
+        toast.warning('Client supprimé', 'Les projets et factures liés ont été mis à jour.');
         get()._audit('delete_client', 'clients', client?.nom || id);
       },
 
@@ -159,8 +172,22 @@ export const useStore = create<CRMStore>()(
 
       deleteFreelancer: (id) => {
         const fl = get().freelancers.find(f => f.id === id);
-        set((state) => ({ freelancers: state.freelancers.filter((f) => f.id !== id) }));
-        toast.warning('Prestataire supprimé');
+        const flName = fl ? `${fl.prenom} ${fl.nom}`.trim() : '';
+        // Cascade: remove from project teams + unassign tasks
+        set((state) => ({
+          freelancers: state.freelancers.filter((f) => f.id !== id),
+          projects: state.projects.map(p => ({
+            ...p,
+            freelancerIds: p.freelancerIds.filter(fid => fid !== id),
+            equipe: flName ? p.equipe.filter(e => e !== flName) : p.equipe,
+            taches: p.taches.map(t => ({
+              ...t,
+              assigneA: t.assigneA === flName ? '' : t.assigneA,
+              assigneAIds: (t.assigneAIds || []).filter(aid => aid !== id),
+            })),
+          })),
+        }));
+        toast.warning('Prestataire supprimé', 'Ses assignations ont été retirées.');
         get()._audit('delete_freelancer', 'freelancers', fl ? `${fl.prenom} ${fl.nom}` : id);
       },
 
@@ -197,8 +224,12 @@ export const useStore = create<CRMStore>()(
 
       deleteProject: (id) => {
         const proj = get().projects.find(p => p.id === id);
-        set((state) => ({ projects: state.projects.filter((p) => p.id !== id) }));
-        toast.warning('Projet supprimé');
+        // Cascade: unlink invoices from this project
+        set((state) => ({
+          projects: state.projects.filter((p) => p.id !== id),
+          invoices: state.invoices.map(i => i.projectId === id ? { ...i, projectId: undefined, projectNom: `${i.projectNom || ''} (supprimé)` } : i),
+        }));
+        toast.warning('Projet supprimé', 'Les factures liées ont été délinkées.');
         get()._audit('delete_project', 'projects', proj?.nom || id);
       },
 
@@ -317,10 +348,75 @@ export const useStore = create<CRMStore>()(
         }));
       },
 
+      // ─── Livrable Actions ────────────────────────────────────────────────
+      addLivrable: (projectId: string, livrable: any) => {
+        const newLivrable = { ...livrable, id: uuidv4() };
+        set(state => ({
+          projects: state.projects.map(p => p.id === projectId
+            ? { ...p, livrables: [...(p.livrables || []), newLivrable] }
+            : p),
+        }));
+        get()._audit('create_livrable', 'projects', `${newLivrable.titre} dans ${get().projects.find(p => p.id === projectId)?.nom}`);
+      },
+      updateLivrable: (projectId: string, livrableId: string, updates: any) => {
+        set(state => ({
+          projects: state.projects.map(p => p.id === projectId
+            ? { ...p, livrables: (p.livrables || []).map(l => l.id === livrableId ? { ...l, ...updates } : l) }
+            : p),
+        }));
+      },
+      deleteLivrable: (projectId: string, livrableId: string) => {
+        set(state => ({
+          projects: state.projects.map(p => p.id === projectId
+            ? { ...p, livrables: (p.livrables || []).filter(l => l.id !== livrableId) }
+            : p),
+        }));
+        get()._audit('delete_livrable', 'projects', `Livrable supprimé du projet`);
+      },
+
+      // ─── Dépense Projet Actions ───────────────────────────────────────────
+      addDepenseProjet: (projectId: string, depense: any) => {
+        const newDepense = { ...depense, id: uuidv4() };
+        set(state => ({
+          projects: state.projects.map(p => p.id === projectId
+            ? { ...p, depensesProjet: [...(p.depensesProjet || []), newDepense], depenses: p.depenses + (newDepense.montant || 0) }
+            : p),
+        }));
+        get()._audit('create_depense', 'projects', `${newDepense.description} — ${newDepense.montant}€`);
+      },
+      updateDepenseProjet: (projectId: string, depenseId: string, updates: any) => {
+        const project = get().projects.find(p => p.id === projectId);
+        const oldDepense = (project?.depensesProjet || []).find(d => d.id === depenseId);
+        const diff = (updates.montant ?? oldDepense?.montant ?? 0) - (oldDepense?.montant ?? 0);
+        set(state => ({
+          projects: state.projects.map(p => p.id === projectId
+            ? { ...p, depensesProjet: (p.depensesProjet || []).map(d => d.id === depenseId ? { ...d, ...updates } : d), depenses: p.depenses + diff }
+            : p),
+        }));
+      },
+      deleteDepenseProjet: (projectId: string, depenseId: string) => {
+        const project = get().projects.find(p => p.id === projectId);
+        const depense = (project?.depensesProjet || []).find(d => d.id === depenseId);
+        set(state => ({
+          projects: state.projects.map(p => p.id === projectId
+            ? { ...p, depensesProjet: (p.depensesProjet || []).filter(d => d.id !== depenseId), depenses: Math.max(0, p.depenses - (depense?.montant || 0)) }
+            : p),
+        }));
+        get()._audit('delete_depense', 'projects', `Dépense supprimée — ${depense?.montant}€`);
+      },
+
       // ─── Invoice Actions ───────────────────────────────────────────────────
       addInvoice: (invoiceData) => {
         const newInvoice: Invoice = { ...invoiceData, id: uuidv4() };
         set((state) => ({ invoices: [...state.invoices, newInvoice] }));
+        // Sync project depenses if linked
+        if (newInvoice.projectId) {
+          set((state) => ({
+            projects: state.projects.map(p => p.id === newInvoice.projectId
+              ? { ...p, depenses: p.depenses + (newInvoice.total || 0) }
+              : p),
+          }));
+        }
         toast.success('Facture créée', newInvoice.numero);
         get()._audit('create_invoice', 'invoices', `${newInvoice.numero} — ${newInvoice.clientNom} — ${newInvoice.total?.toLocaleString('fr-FR')} €`);
       },

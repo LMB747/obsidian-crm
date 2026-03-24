@@ -1,10 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, FolderKanban, FileText, CheckSquare, Package } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FolderKanban, FileText, CheckSquare, Package, BookOpen } from 'lucide-react';
 import { useStore } from '../store/useStore';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type EventType = 'project' | 'invoice' | 'task' | 'livrable';
+type EventType = 'project' | 'invoice' | 'task' | 'livrable' | 'personal';
 
 interface CalendarEvent {
   id: string;
@@ -19,6 +19,7 @@ const TYPE_CONFIG: Record<EventType, { color: string; dot: string; icon: React.F
   invoice:  { color: 'text-emerald-300', dot: 'bg-emerald-500', icon: FileText },
   task:     { color: 'text-cyan-300',    dot: 'bg-cyan-500',    icon: CheckSquare },
   livrable: { color: 'text-amber-300',   dot: 'bg-amber-500',   icon: Package },
+  personal: { color: 'text-violet-300',  dot: 'bg-violet-500',  icon: BookOpen },
 };
 
 const DAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
@@ -46,7 +47,7 @@ function pad(n: number): string {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export const Calendar: React.FC = () => {
-  const { projects, invoices, setActiveSection } = useStore();
+  const { projects, invoices, personalTasks, currentUser, setActiveSection } = useStore();
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
@@ -82,8 +83,16 @@ export const Calendar: React.FC = () => {
       }
     });
 
+    // Personal tasks (current user only)
+    const userId = currentUser?.id;
+    personalTasks
+      .filter(t => t.userId === userId && t.dateEcheance && t.statut !== 'done')
+      .forEach(t => {
+        list.push({ id: t.id, date: t.dateEcheance!, label: t.titre, type: 'personal', section: 'personal' });
+      });
+
     return list;
-  }, [projects, invoices]);
+  }, [projects, invoices, personalTasks, currentUser]);
 
   // ── Events grouped by date (for current month) ──
   const eventsByDate = useMemo(() => {

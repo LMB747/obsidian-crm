@@ -324,6 +324,16 @@ export interface CRMStore {
   addFreelancerToProject: (projectId: string, freelancerId: string) => void;
   removeFreelancerFromProject: (projectId: string, freelancerId: string) => void;
 
+  // Actions — Livrables
+  addLivrable: (projectId: string, livrable: Omit<Livrable, 'id'>) => void;
+  updateLivrable: (projectId: string, livrableId: string, updates: Partial<Livrable>) => void;
+  deleteLivrable: (projectId: string, livrableId: string) => void;
+
+  // Actions — Dépenses Projet
+  addDepenseProjet: (projectId: string, depense: Omit<DepenseProjet, 'id'>) => void;
+  updateDepenseProjet: (projectId: string, depenseId: string, updates: Partial<DepenseProjet>) => void;
+  deleteDepenseProjet: (projectId: string, depenseId: string) => void;
+
   // Actions — Invoices
   addInvoice: (invoice: Omit<Invoice, 'id'>) => void;
   updateInvoice: (id: string, updates: Partial<Invoice>) => void;
