@@ -1,13 +1,4 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createHash, randomBytes } from 'crypto';
-
-/**
- * POST /api/login
- * Body: { email: string, password: string }
- *
- * Verifies credentials against AUTH_USERS env var.
- * Format: AUTH_USERS = email1:password1:role1:nom1,email2:password2:role2:nom2
- */
 
 export default function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -26,7 +17,7 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
 
     const authUsers = process.env.AUTH_USERS || '';
     if (!authUsers) {
-      return res.status(500).json({ success: false, error: 'Aucun utilisateur configuré côté serveur.' });
+      return res.status(500).json({ success: false, error: 'AUTH_USERS non configuré.' });
     }
 
     const users = authUsers.split(',').map(entry => {
@@ -45,10 +36,7 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(401).json({ success: false, error: 'Email ou mot de passe incorrect.' });
     }
 
-    // Simple session token
-    const token = createHash('sha256')
-      .update(`${user.email}-${Date.now()}-${randomBytes(16).toString('hex')}`)
-      .digest('hex');
+    const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
     return res.status(200).json({
       success: true,
@@ -56,6 +44,6 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
       token,
     });
   } catch (err: any) {
-    return res.status(500).json({ success: false, error: 'Erreur serveur: ' + (err.message || 'inconnue') });
+    return res.status(500).json({ success: false, error: err.message || 'Erreur serveur' });
   }
 }
