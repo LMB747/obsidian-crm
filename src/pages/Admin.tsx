@@ -368,17 +368,22 @@ export const Admin: React.FC = () => {
 
   // Supabase logs
   const [supabaseLogs, setSupabaseLogs] = useState<AuditLog[]>([]);
-  const [logsSource, setLogsSource] = useState<'local' | 'supabase'>('local');
+  const [logsSource, setLogsSource] = useState<'local' | 'supabase' | 'error'>('local');
   const [logsLoading, setLogsLoading] = useState(false);
+  const [logsError, setLogsError] = useState<string | null>(null);
 
   const refreshLogs = useCallback(() => {
     if (!isSupabaseConfigured()) return;
     setLogsLoading(true);
+    setLogsError(null);
     fetchAuditLogs({ limit: 1000 })
-      .then(logs => {
-        if (logs.length > 0) {
-          setSupabaseLogs(logs);
+      .then(result => {
+        if (result.source === 'supabase') {
+          setSupabaseLogs(result.logs);
           setLogsSource('supabase');
+        } else if (result.source === 'error') {
+          setLogsSource('error');
+          setLogsError(result.error || 'Erreur inconnue');
         }
       })
       .finally(() => setLogsLoading(false));
@@ -976,13 +981,20 @@ export const Admin: React.FC = () => {
       {activeTab === 'logs' && (
         <div className="space-y-5">
           {/* Source indicator + refresh */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <span className={clsx(
               'text-xs px-2 py-1 rounded-full',
-              logsSource === 'supabase' ? 'bg-green-500/20 text-green-400' : 'bg-slate-500/20 text-slate-400'
+              logsSource === 'supabase' ? 'bg-green-500/20 text-green-400' :
+              logsSource === 'error' ? 'bg-red-500/20 text-red-400' :
+              'bg-slate-500/20 text-slate-400'
             )}>
-              {logsSource === 'supabase' ? 'Supabase (cloud)' : 'Local (navigateur)'}
+              {logsSource === 'supabase' ? 'Supabase (cloud)' :
+               logsSource === 'error' ? 'Erreur Supabase' :
+               'Local (navigateur)'}
             </span>
+            {logsError && (
+              <span className="text-xs text-red-400">{logsError}</span>
+            )}
             {isSupabaseConfigured() && (
               <button
                 onClick={refreshLogs}

@@ -66,15 +66,21 @@ export function syncAuditLog(log: AuditLog): void {
   if (!supabase) return;
 
   const dbLog = mapKeys(log, LOG_TO_DB);
-  // Ne pas envoyer l'id local — laisser Supabase générer le sien
   delete dbLog.id;
 
   supabase
     .from('audit_logs')
     .insert(dbLog)
     .then(({ error }) => {
-      if (error) console.warn('[Supabase] syncAuditLog error:', error.message);
+      if (error) console.error('[Supabase] syncAuditLog FAILED:', error.message, error.details, error.hint);
     });
+}
+
+/** Résultat de fetchAuditLogs avec statut de connexion */
+export interface AuditLogResult {
+  logs: AuditLog[];
+  source: 'supabase' | 'unavailable' | 'error';
+  error?: string;
 }
 
 /** Récupère les audit logs depuis Supabase (pour Admin) */
@@ -84,9 +90,9 @@ export async function fetchAuditLogs(filters?: {
   dateFrom?: string;
   dateTo?: string;
   limit?: number;
-}): Promise<AuditLog[]> {
+}): Promise<AuditLogResult> {
   const supabase = sb();
-  if (!supabase) return [];
+  if (!supabase) return { logs: [], source: 'unavailable', error: 'Supabase non configuré' };
 
   let query = supabase
     .from('audit_logs')
@@ -102,11 +108,12 @@ export async function fetchAuditLogs(filters?: {
   const { data, error } = await query;
 
   if (error) {
-    console.warn('[Supabase] fetchAuditLogs error:', error.message);
-    return [];
+    console.error('[Supabase] fetchAuditLogs FAILED:', error.message, error.details, error.hint);
+    return { logs: [], source: 'error', error: error.message };
   }
 
-  return (data || []).map((row: any) => mapKeys(row, LOG_FROM_DB) as AuditLog);
+  const logs = (data || []).map((row: any) => mapKeys(row, LOG_FROM_DB) as AuditLog);
+  return { logs, source: 'supabase' };
 }
 
 // ─── PERSONAL TASKS ─────────────────────────────────────────────────────────
