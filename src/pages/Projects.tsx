@@ -10,7 +10,7 @@ import {
   Link, ExternalLink, Pen, HardDrive, Github, Columns3, Video, TrendingUp, MessageCircle, Paperclip
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { Project, ProjectStatus, Task, Freelancer, Objective, ProjectSubCategory, Livrable, LivrableType, LivrableStatut, DepenseProjet, LienAvancementType } from '../types';
+import { Project, ProjectStatus, Task, Freelancer, Objective, ProjectSubCategory, Livrable, LivrableType, LivrableStatut, DepenseProjet, LienAvancementType, Devise } from '../types';
 import { Badge } from '../components/ui/Badge';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { Modal } from '../components/ui/Modal';
@@ -1807,17 +1807,35 @@ export const Projects: React.FC = () => {
               />
             </div>
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1.5">Budget (€)</label>
-            <input
-              type="number"
-              value={editProject.budget}
-              onChange={e => setEditProject(p => ({ ...p, budget: Number(e.target.value) }))}
-              className={INPUT_CLASS}
-              min="0"
-              step="100"
-              placeholder="0"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Budget</label>
+              <input
+                type="number"
+                value={editProject.budget}
+                onChange={e => setEditProject(p => ({ ...p, budget: Number(e.target.value) }))}
+                className={INPUT_CLASS}
+                min="0"
+                step="100"
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Devise</label>
+              <select
+                value={(editProject as any).devise || 'EUR'}
+                onChange={e => setEditProject(p => ({ ...p, devise: e.target.value as Devise }))}
+                className={INPUT_CLASS}
+              >
+                <option value="EUR">{'\u20ac'} Euro</option>
+                <option value="USD">$ Dollar US</option>
+                <option value="GBP">{'\u00a3'} Livre Sterling</option>
+                <option value="CHF">CHF Franc Suisse</option>
+                <option value="CAD">CA$ Dollar Canadien</option>
+                <option value="MAD">DH Dirham</option>
+                <option value="XOF">CFA Franc CFA</option>
+              </select>
+            </div>
           </div>
           {/* Tags */}
           <div>
@@ -1976,18 +1994,36 @@ export const Projects: React.FC = () => {
             </div>
           </div>
 
-          {/* Budget */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1.5">Budget (€)</label>
-            <input
-              type="number"
-              value={newProject.budget}
-              onChange={e => setNewProject(p => ({ ...p, budget: Number(e.target.value) }))}
-              className={INPUT_CLASS}
-              min="0"
-              step="100"
-              placeholder="0"
-            />
+          {/* Budget + Devise */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Budget</label>
+              <input
+                type="number"
+                value={newProject.budget}
+                onChange={e => setNewProject(p => ({ ...p, budget: Number(e.target.value) }))}
+                className={INPUT_CLASS}
+                min="0"
+                step="100"
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Devise</label>
+              <select
+                value={(newProject as any).devise || 'EUR'}
+                onChange={e => setNewProject(p => ({ ...p, devise: e.target.value as Devise }))}
+                className={INPUT_CLASS}
+              >
+                <option value="EUR">{'\u20ac'} Euro</option>
+                <option value="USD">$ Dollar US</option>
+                <option value="GBP">{'\u00a3'} Livre Sterling</option>
+                <option value="CHF">CHF Franc Suisse</option>
+                <option value="CAD">CA$ Dollar Canadien</option>
+                <option value="MAD">DH Dirham</option>
+                <option value="XOF">CFA Franc CFA</option>
+              </select>
+            </div>
           </div>
 
           {/* Tags */}

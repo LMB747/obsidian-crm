@@ -6,11 +6,14 @@ import {
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useStore } from '../store/useStore';
-import { Invoice, InvoiceStatus } from '../types';
+import { Invoice, InvoiceStatus, Devise } from '../types';
 import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { StatCard } from '../components/ui/StatCard';
 import { exportInvoicesCsv } from '../utils/csvExport';
+import { downloadFEC } from '../utils/fecExport';
+import { formatMontant as formatDevise } from '../utils/currency';
+import { toast } from '../components/ui/Toast';
 import clsx from 'clsx';
 
 const statusConfig: Record<InvoiceStatus, { label: string; variant: any; icon: React.FC<any>; color: string }> = {
@@ -38,7 +41,7 @@ const defaultEcheance = (() => {
 const emptyItem = (): NewInvoiceItem => ({ description: '', quantite: 1, prixUnitaire: 0, total: 0 });
 
 export const Invoices: React.FC = () => {
-  const { invoices, clients, projects, addInvoice, updateInvoice, deleteInvoice, setActiveSection } = useStore();
+  const { invoices, clients, projects, settings, addInvoice, updateInvoice, deleteInvoice, setActiveSection } = useStore();
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'tous'>('tous');
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -53,6 +56,7 @@ export const Invoices: React.FC = () => {
   const [dateEcheance, setDateEcheance] = useState(defaultEcheance);
   const [notes, setNotes] = useState('');
   const [tvaRate, setTvaRate] = useState(20);
+  const [devise, setDevise] = useState<Devise>('EUR');
   const [items, setItems] = useState<NewInvoiceItem[]>([emptyItem()]);
 
   // ── Auto-calcul statut "en retard" ────────────────────────────────────────
@@ -112,6 +116,7 @@ export const Invoices: React.FC = () => {
     setDateEcheance(defaultEcheance);
     setNotes('');
     setTvaRate(20);
+    setDevise('EUR');
     setItems([emptyItem()]);
   };
 
@@ -140,6 +145,7 @@ export const Invoices: React.FC = () => {
       sousTotal,
       tva: tvaAmount,
       total: totalTTC,
+      devise,
       notes,
     });
 
@@ -194,6 +200,21 @@ export const Invoices: React.FC = () => {
           >
             <Download className="w-3.5 h-3.5" />
             Export CSV
+          </button>
+          <button
+            onClick={() => {
+              const year = new Date().getFullYear();
+              downloadFEC(
+                invoices,
+                { debut: `${year}-01-01`, fin: `${year}-12-31` },
+                settings.siret || '00000000000000'
+              );
+              toast.success('FEC export\u00e9');
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 bg-card border border-card-border text-slate-300 rounded-xl text-sm font-medium hover:text-white hover:border-primary-500/30 transition-all"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Export FEC
           </button>
           <button
             onClick={openAddModal}
@@ -264,7 +285,7 @@ export const Invoices: React.FC = () => {
                     </td>
                     <td className="px-5 py-4 text-right">
                       <p className={clsx('text-sm font-bold', invoice.statut === 'payée' ? 'text-accent-green' : isLate ? 'text-accent-red' : 'text-white')}>
-                        {invoice.total.toLocaleString('fr-FR')} €
+                        {formatDevise(invoice.total, invoice.devise || 'EUR')}
                       </p>
                       <p className="text-slate-500 text-xs">TTC</p>
                     </td>
@@ -369,8 +390,8 @@ export const Invoices: React.FC = () => {
             </div>
           </div>
 
-          {/* Dates + TVA */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Dates + TVA + Devise */}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-400 mb-1.5">Date d'émission</label>
               <input
@@ -399,6 +420,22 @@ export const Invoices: React.FC = () => {
                 {[0, 5.5, 10, 20].map(r => (
                   <option key={r} value={r}>{r} %</option>
                 ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Devise</label>
+              <select
+                value={devise}
+                onChange={e => setDevise(e.target.value as Devise)}
+                className="w-full bg-obsidian-700 border border-card-border rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-primary-500/60 transition-colors"
+              >
+                <option value="EUR">{'\u20ac'} Euro</option>
+                <option value="USD">$ Dollar US</option>
+                <option value="GBP">{'\u00a3'} Livre Sterling</option>
+                <option value="CHF">CHF Franc Suisse</option>
+                <option value="CAD">CA$ Dollar Canadien</option>
+                <option value="MAD">DH Dirham</option>
+                <option value="XOF">CFA Franc CFA</option>
               </select>
             </div>
           </div>
@@ -476,15 +513,15 @@ export const Invoices: React.FC = () => {
           <div className="bg-obsidian-700 rounded-xl border border-card-border p-4 space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-slate-400">Sous-total HT</span>
-              <span className="text-white">{sousTotal.toLocaleString('fr-FR')} €</span>
+              <span className="text-white">{formatDevise(sousTotal, devise)}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-slate-400">TVA ({tvaRate}%)</span>
-              <span className="text-white">{tvaAmount.toLocaleString('fr-FR')} €</span>
+              <span className="text-white">{formatDevise(tvaAmount, devise)}</span>
             </div>
             <div className="flex justify-between text-base font-bold pt-2 border-t border-card-border">
               <span className="text-white">Total TTC</span>
-              <span className="text-accent-green text-xl">{totalTTC.toLocaleString('fr-FR')} €</span>
+              <span className="text-accent-green text-xl">{formatDevise(totalTTC, devise)}</span>
             </div>
           </div>
 
@@ -554,8 +591,8 @@ export const Invoices: React.FC = () => {
                 <div key={item.id} className="grid grid-cols-12 px-4 py-3 border-b border-card-border/50 last:border-0">
                   <span className="col-span-6 text-white text-sm">{item.description}</span>
                   <span className="col-span-2 text-slate-400 text-sm text-center">{item.quantite}</span>
-                  <span className="col-span-2 text-slate-400 text-sm text-right">{item.prixUnitaire.toLocaleString('fr-FR')} €</span>
-                  <span className="col-span-2 text-white text-sm font-semibold text-right">{item.total.toLocaleString('fr-FR')} €</span>
+                  <span className="col-span-2 text-slate-400 text-sm text-right">{formatDevise(item.prixUnitaire, viewingInvoice.devise || 'EUR')}</span>
+                  <span className="col-span-2 text-white text-sm font-semibold text-right">{formatDevise(item.total, viewingInvoice.devise || 'EUR')}</span>
                 </div>
               ))}
             </div>
@@ -564,15 +601,15 @@ export const Invoices: React.FC = () => {
             <div className="bg-obsidian-700 rounded-xl border border-card-border p-4 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-slate-400">Sous-total HT</span>
-                <span className="text-white">{viewingInvoice.sousTotal.toLocaleString('fr-FR')} €</span>
+                <span className="text-white">{formatDevise(viewingInvoice.sousTotal, viewingInvoice.devise || 'EUR')}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-slate-400">TVA (20%)</span>
-                <span className="text-white">{viewingInvoice.tva.toLocaleString('fr-FR')} €</span>
+                <span className="text-white">{formatDevise(viewingInvoice.tva, viewingInvoice.devise || 'EUR')}</span>
               </div>
               <div className="flex justify-between text-base font-bold pt-2 border-t border-card-border">
                 <span className="text-white">Total TTC</span>
-                <span className="text-accent-green text-xl">{viewingInvoice.total.toLocaleString('fr-FR')} €</span>
+                <span className="text-accent-green text-xl">{formatDevise(viewingInvoice.total, viewingInvoice.devise || 'EUR')}</span>
               </div>
             </div>
 

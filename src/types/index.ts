@@ -1,3 +1,6 @@
+// ─── DEVISE ─────────────────────────────────────────────────────────────────
+export type Devise = 'EUR' | 'USD' | 'GBP' | 'CHF' | 'CAD' | 'MAD' | 'XOF';
+
 // ─── FREELANCER / PRESTATAIRE ─────────────────────────────────────────────────
 export type FreelancerSpecialite =
   | 'développement web'
@@ -26,6 +29,7 @@ export interface Freelancer {
   numeroTVA: string;
   specialite: FreelancerSpecialite;
   tjm: number;                // Taux Journalier Moyen en €
+  devise?: Devise;            // Devise du TJM (défaut EUR)
   statut: FreelancerStatut;
   tags: string[];
   notes: string;
@@ -149,6 +153,7 @@ export interface Project {
   dateDebut: string;
   dateFin: string;
   budget: number;
+  devise?: Devise;            // Devise du budget (défaut EUR)
   depenses: number;
   progression: number;
   taches: Task[];
@@ -209,6 +214,7 @@ export interface Invoice {
   sousTotal: number;
   tva: number;
   total: number;
+  devise?: Devise;            // Devise de la facture (défaut EUR)
   notes: string;
 }
 
@@ -378,6 +384,7 @@ export interface Devis {
   sousTotal: number;
   tva: number;
   total: number;
+  devise?: Devise;            // Devise du devis (défaut EUR)
   dateCreation: string;
   dateExpiration: string;
   notes: string;
