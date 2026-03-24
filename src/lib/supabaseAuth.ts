@@ -103,8 +103,15 @@ async function getProfile(userId: string): Promise<UserProfile | null> {
   return data as UserProfile | null;
 }
 
+/** Default permissions by role */
+const DEFAULT_PERMISSIONS: Record<string, string[]> = {
+  admin: ['dashboard','clients','freelancers','projects','worktracking','invoices','documents','snooze','calendar','analytics','media-buying','prospection','personal','settings','admin'],
+  freelancer: ['dashboard','projects','worktracking','calendar','personal','settings'],
+  viewer: ['dashboard','calendar','personal','settings'],
+};
+
 /** Invite a new user (admin only) */
-export async function inviteUser(email: string, password: string, nom: string, prenom: string, role: 'admin' | 'freelancer' | 'viewer'): Promise<{ success: boolean; error?: string }> {
+export async function inviteUser(email: string, password: string, nom: string, prenom: string, role: 'admin' | 'freelancer' | 'viewer', permissions?: string[]): Promise<{ success: boolean; error?: string }> {
   const supabase = getSupabase();
   if (!supabase) return { success: false, error: 'Supabase non configuré.' };
 
@@ -120,7 +127,10 @@ export async function inviteUser(email: string, password: string, nom: string, p
   if (error) return { success: false, error: error.message };
   if (!data.user) return { success: false, error: 'Erreur lors de la création.' };
 
-  // Insert profile
+  // Resolve permissions: custom > role defaults
+  const finalPermissions = (permissions && permissions.length > 0) ? permissions : (DEFAULT_PERMISSIONS[role] || DEFAULT_PERMISSIONS.viewer);
+
+  // Insert profile WITH permissions
   const { error: profileError } = await supabase.from('profiles').upsert({
     id: data.user.id,
     email,
@@ -128,10 +138,25 @@ export async function inviteUser(email: string, password: string, nom: string, p
     prenom,
     role,
     is_active: true,
+    permissions: finalPermissions,
   });
 
   if (profileError) return { success: false, error: profileError.message };
 
+  return { success: true };
+}
+
+/** Update user permissions in Supabase profile */
+export async function updateUserPermissions(userId: string, permissions: string[], role?: string): Promise<{ success: boolean; error?: string }> {
+  const supabase = getSupabase();
+  if (!supabase) return { success: false, error: 'Supabase non configuré.' };
+
+  const updateData: Record<string, any> = { permissions };
+  if (role) updateData.role = role;
+
+  const { error } = await supabase.from('profiles').update(updateData).eq('id', userId);
+
+  if (error) return { success: false, error: error.message };
   return { success: true };
 }
 

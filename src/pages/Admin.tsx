@@ -418,11 +418,12 @@ export const Admin: React.FC = () => {
   const handleSaveUser = async (data: Omit<UserAccount, 'id' | 'dateCreation'>, rawPassword?: string) => {
     if (editUser?.id) {
       updateUser(editUser.id, data);
-      // Sync permissions to Supabase profile (fire & forget)
-      import('../lib/supabaseAuth').then(({ getSupabase }) => {
-        const sb = getSupabase();
-        if (sb && editUser.email) {
-          sb.from('profiles').update({ permissions: data.permissions, role: data.role }).eq('email', editUser.email).then(() => {});
+      // Sync permissions to Supabase profile using proper function
+      import('../lib/supabaseAuth').then(({ updateUserPermissions }) => {
+        if (editUser.id) {
+          updateUserPermissions(editUser.id, data.permissions as string[], data.role).then(result => {
+            if (!result.success) console.warn('[Admin] Supabase permission sync failed:', result.error);
+          });
         }
       }).catch(() => {});
       toast.success('Utilisateur modifié');
@@ -527,7 +528,8 @@ export const Admin: React.FC = () => {
     const currentUser = useStore.getState().currentUser;
     const tempPassword = Math.random().toString(36).slice(2, 10) + 'A1!';
 
-    // Create real account in Supabase via API
+    // Create real account in Supabase via API with permissions
+    const resolvedPermissions = invRole === 'admin' ? SECTION_CONFIG.map(s => s.id) : invPermissions;
     try {
       const res = await fetch('/api/create-user', {
         method: 'POST',
@@ -538,6 +540,7 @@ export const Admin: React.FC = () => {
           nom: invEmail.split('@')[0],
           prenom: '',
           role: invRole,
+          permissions: resolvedPermissions,
         }),
       });
       const result = await res.json();
