@@ -584,11 +584,10 @@ export const useStore = create<CRMStore>()(
       },
 
       logout: () => {
-        const user = get().currentUser;
-        if (user) get().addAuditLog({ userId: user.id, userNom: `${user.prenom} ${user.nom}`, action: 'logout', details: 'Déconnexion', date: new Date().toISOString() });
-        // Clear everything: store user + API session + Supabase
         set({ currentUser: null });
         try { localStorage.removeItem('obsidian-session'); } catch {}
+        // Supabase signout (async, fire and forget)
+        import('../lib/supabaseAuth').then(m => m.signOut()).catch(() => {});
         window.location.reload();
       },
 

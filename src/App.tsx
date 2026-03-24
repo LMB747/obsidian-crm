@@ -3,7 +3,8 @@ import { useStore } from './store/useStore';
 import { Layout } from './components/Layout/Layout';
 import { LoginScreen } from './components/Auth/LoginScreen';
 import { PageSkeleton } from './components/ui/Skeleton';
-import { loginAPI, getSession, clearSession } from './lib/authService';
+import { signIn, signOut, getCurrentUser, isSupabaseConfigured } from './lib/supabaseAuth';
+import { loginAPI, getSession, clearSession, saveSession } from './lib/authService';
 
 const Dashboard       = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const Clients         = lazy(() => import('./pages/Clients').then(m => ({ default: m.Clients })));
@@ -40,108 +41,102 @@ const pageMap: Record<string, React.ComponentType> = {
   'freelancer-portal': FreelancerPortal,
 };
 
+// ─── Helper: sync user into Zustand store ──────────────────────────────────
+function syncToStore(email: string, nom: string, role: string) {
+  useStore.getState().syncSessionUser({ email, role, nom, prenom: '' });
+}
+
+// ─── App ────────────────────────────────────────────────────────────────────
 const App: React.FC = () => {
   const { activeSection, currentUser, login } = useStore();
   const setActiveSection = useStore((s) => s.setActiveSection);
-
-  // ── Restore session on mount ──────────────────────────────────────────────
   const [ready, setReady] = useState(false);
 
+  // ── 1. On mount: restore session ──────────────────────────────────────────
   useEffect(() => {
-    // If no currentUser in store, check for saved API session
-    if (!currentUser) {
+    (async () => {
+      // Try Supabase session first
+      if (isSupabaseConfigured()) {
+        const user = await getCurrentUser();
+        if (user) {
+          syncToStore(user.email, `${user.prenom} ${user.nom}`.trim(), user.role);
+          setReady(true);
+          return;
+        }
+      }
+      // Try saved API session
       const saved = getSession();
       if (saved) {
-        useStore.getState().syncSessionUser({
-          email: saved.email,
-          role: saved.role || 'admin',
-          nom: saved.nom || '',
-          prenom: '',
-        });
+        syncToStore(saved.email, saved.nom, saved.role || 'admin');
       }
-    }
-    setReady(true);
+      setReady(true);
+    })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isLoggedIn = !!currentUser;
-
-  // ── Login: API first → local store fallback ───────────────────────────────
+  // ── 2. Login handler ──────────────────────────────────────────────────────
   const handleLogin = useCallback(async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
-    // Try API (Vercel serverless)
-    const apiResult = await loginAPI(email, password);
-    if (apiResult.success && apiResult.user) {
-      useStore.getState().syncSessionUser({
-        email: apiResult.user.email,
-        role: apiResult.user.role || 'admin',
-        nom: apiResult.user.nom || '',
-        prenom: '',
-      });
-      return { success: true };
+    // A. Supabase (if configured)
+    if (isSupabaseConfigured()) {
+      const result = await signIn(email, password);
+      if (result.success && result.user) {
+        syncToStore(result.user.email, `${result.user.prenom} ${result.user.nom}`.trim(), result.user.role);
+        return { success: true };
+      }
+      if (result.error) return { success: false, error: result.error };
     }
 
-    // Fallback: local store (dev)
+    // B. API serverless (Vercel env vars)
+    try {
+      const apiResult = await loginAPI(email, password);
+      if (apiResult.success && apiResult.user) {
+        syncToStore(apiResult.user.email, apiResult.user.nom, apiResult.user.role || 'admin');
+        return { success: true };
+      }
+      if (apiResult.error && !apiResult.error.includes('non disponible')) {
+        return { success: false, error: apiResult.error };
+      }
+    } catch {}
+
+    // C. Local store (dev only)
     const storeResult = await login(email, password);
     if (storeResult.success) return { success: true };
 
-    return { success: false, error: apiResult.error || storeResult.error || 'Identifiants incorrects.' };
+    return { success: false, error: 'Email ou mot de passe incorrect.' };
   }, [login]);
 
-  // Sync URL hash ↔ activeSection
+  // ── 3. URL hash sync ──────────────────────────────────────────────────────
   useEffect(() => {
     const hash = window.location.hash.replace('#', '');
-    if (hash && hash !== activeSection && hash in pageMap) {
-      setActiveSection(hash);
-    }
+    if (hash && hash !== activeSection && hash in pageMap) setActiveSection(hash);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (isLoggedIn) window.location.hash = activeSection;
-  }, [activeSection, isLoggedIn]);
+    if (currentUser) window.location.hash = activeSection;
+  }, [activeSection, currentUser]);
 
   useEffect(() => {
-    const onPopState = () => {
+    const onPop = () => {
       const hash = window.location.hash.replace('#', '');
-      if (hash && hash in pageMap) {
-        setActiveSection(hash);
-      }
+      if (hash && hash in pageMap) setActiveSection(hash);
     };
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
   }, [setActiveSection]);
 
-  // ── Rendering ──────────────────────────────────────────────────────────────
-
+  // ── 4. Render ─────────────────────────────────────────────────────────────
   if (!ready) return <PageSkeleton />;
 
-  if (!isLoggedIn) {
-    return <LoginScreen onLogin={handleLogin} />;
-  }
+  if (!currentUser) return <LoginScreen onLogin={handleLogin} />;
 
-  // Si freelancer → portail limité (sauf si section autorisée dans permissions)
-  if (currentUser?.role === 'freelancer') {
-    const allowedSections = currentUser.permissions as string[];
-    if (
-      activeSection === 'freelancer-portal' ||
-      !allowedSections.includes(activeSection)
-    ) {
-      return (
-        <Layout>
-          <Suspense fallback={<PageSkeleton />}>
-            <FreelancerPortal />
-          </Suspense>
-        </Layout>
-      );
+  if (currentUser.role === 'freelancer') {
+    const allowed = currentUser.permissions as string[];
+    if (activeSection === 'freelancer-portal' || !allowed.includes(activeSection)) {
+      return <Layout><Suspense fallback={<PageSkeleton />}><FreelancerPortal /></Suspense></Layout>;
     }
   }
 
   const Page = pageMap[activeSection] || NotFound;
-  return (
-    <Layout>
-      <Suspense fallback={<PageSkeleton />}>
-        <Page />
-      </Suspense>
-    </Layout>
-  );
+  return <Layout><Suspense fallback={<PageSkeleton />}><Page /></Suspense></Layout>;
 };
 
 export default App;
