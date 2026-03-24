@@ -33,7 +33,7 @@ const PRIO_CONFIG: Record<PersonalTaskPriorite, { label: string; color: string; 
 
 const NOTE_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4', '#f97316'];
 
-const TAG_SUGGESTIONS = ['Maths', 'Français', 'Histoire', 'Anglais', 'Physique', 'SVT', 'Projet', 'Perso', 'Urgent', 'Révision'];
+const TAG_SUGGESTIONS = ['Montage vidéo', 'Web dev', 'Media buying', 'Design', 'Rédaction', 'SEO', 'Client', 'Admin', 'Urgent', 'Facture'];
 
 type NoteSortMode = 'recent' | 'alpha' | 'couleur';
 
@@ -333,7 +333,7 @@ export const PersonalSpace: React.FC = () => {
             </div>
             Mon Espace
           </h1>
-          <p className="text-slate-500 text-sm mt-1">Organisez vos tâches, devoirs et notes personnelles</p>
+          <p className="text-slate-500 text-sm mt-1">Vos tâches et notes personnelles — privées et non partagées</p>
         </div>
       </div>
 
@@ -380,7 +380,7 @@ export const PersonalSpace: React.FC = () => {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <CheckSquare className="w-5 h-5 text-primary-400" /> Mes Devoirs
+              <CheckSquare className="w-5 h-5 text-primary-400" /> Mes Tâches
             </h2>
             <button onClick={() => { resetTaskForm(); setShowTaskForm(true); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-500/20 text-primary-400 text-xs font-semibold hover:bg-primary-500/30 transition-all">
               <Plus className="w-3.5 h-3.5" /> Ajouter
@@ -483,7 +483,7 @@ export const PersonalSpace: React.FC = () => {
           {filteredTasks.length === 0 && (
             <div className="text-center py-8">
               <CheckSquare className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-              <p className="text-slate-500 text-sm">{taskFilter === 'all' ? 'Aucun devoir — ajoutez-en un !' : 'Aucun devoir dans cette catégorie'}</p>
+              <p className="text-slate-500 text-sm">{taskFilter === 'all' ? 'Aucune tâche — ajoutez-en une !' : 'Aucune tâche dans cette catégorie'}</p>
             </div>
           )}
         </div>
