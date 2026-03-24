@@ -18,6 +18,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import type { ProspectContact, ProspectSource } from '../types/prospection';
+import { computeProspectScore } from './apifyService';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -208,7 +209,8 @@ export async function getPhantomResults(
 
   return items
     .map((item) => mapPBItemToProspect(item, platform))
-    .filter((p): p is ProspectContact => p !== null);
+    .filter((p): p is ProspectContact => p !== null)
+    .map(p => ({ ...p, score: computeProspectScore(p) }));
 }
 
 // ─── Mapper PhantomBuster item → ProspectContact ────────────────────────────

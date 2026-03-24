@@ -812,6 +812,35 @@ const TabProspects: React.FC = () => {
   });
 
   const allSelectedOnPage = filtered.length > 0 && filtered.every((p) => selectedProspects.includes(p.id));
+
+  // ── CSV Export ──────────────────────────────────────────────────────────────
+  const exportCSV = useCallback(() => {
+    const data = filtered.length > 0 ? filtered : prospects;
+    if (data.length === 0) return;
+
+    const headers = ['Prénom', 'Nom', 'Entreprise', 'Poste', 'Email', 'Téléphone', 'Website', 'Ville', 'Pays', 'Source', 'Score', 'Statut', 'Intention', 'Secteur', 'Taille', 'LinkedIn', 'Date découvert'];
+    const escape = (v: string | undefined | null) => {
+      if (!v) return '';
+      const s = String(v);
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const rows = data.map((p) => [
+      escape(p.prenom), escape(p.nom), escape(p.entreprise), escape(p.poste),
+      escape(p.email), escape(p.telephone), escape(p.website),
+      escape(p.ville), escape(p.pays), escape(p.source), String(p.score), escape(p.status),
+      escape(p.intentionAchat), escape(p.secteur), escape(p.tailleEntreprise),
+      escape(p.linkedinUrl), escape(p.dateDecouvert),
+    ].join(','));
+
+    const csv = '\uFEFF' + [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `prospects_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [filtered, prospects]);
   const activeFilterCount = filters.sources.length + filters.status.length + filters.intentionAchat.length;
 
   const handleEnrich = (id: string) => {
@@ -909,8 +938,12 @@ const TabProspects: React.FC = () => {
             </button>
           </>
         )}
-        <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-card-border bg-card text-slate-400 hover:text-white text-sm transition-all ml-auto">
-          <Download className="w-4 h-4" /> Export CSV
+        <button
+          onClick={exportCSV}
+          disabled={prospects.length === 0}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-card-border bg-card text-slate-400 hover:text-white text-sm transition-all ml-auto disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <Download className="w-4 h-4" /> Export CSV {filtered.length > 0 && filtered.length !== prospects.length ? `(${filtered.length})` : ''}
         </button>
       </div>
 
@@ -1153,19 +1186,55 @@ const TabEnrichissement: React.FC = () => {
   const toEnrich       = prospects.filter((p) => p.status === 'new');
   const alreadyEnriched = prospects.filter((p) => p.status === 'enriched' || p.status === 'qualified');
 
+  // Enrichissement heuristique : déduit les infos manquantes à partir des données existantes
+  const enrichProspectData = (p: ProspectContact): Partial<ProspectContact> => {
+    const updates: Partial<ProspectContact> = {
+      status: 'enriched' as const,
+      dateEnrichi: new Date().toISOString().split('T')[0],
+    };
+
+    // Intention d'achat basée sur le score et les données disponibles
+    if (!p.intentionAchat || p.intentionAchat === 'faible') {
+      const hasContact = !!(p.email || p.telephone);
+      const hasProfile = !!(p.linkedinUrl || p.website);
+      if (p.score >= 75 && hasContact) updates.intentionAchat = 'forte';
+      else if (p.score >= 50 || hasProfile) updates.intentionAchat = 'moyenne';
+      else updates.intentionAchat = 'faible';
+    }
+
+    // Taille entreprise déduite du poste ou de la source
+    if (!p.tailleEntreprise || p.tailleEntreprise === 'TPE/PME') {
+      const posteL = (p.poste || '').toLowerCase();
+      if (posteL.includes('ceo') || posteL.includes('fondateur') || posteL.includes('co-fondateur') || posteL.includes('indépendant')) {
+        updates.tailleEntreprise = '1-10';
+      } else if (posteL.includes('directeur') || posteL.includes('head') || posteL.includes('vp')) {
+        updates.tailleEntreprise = '51-200';
+      } else if (posteL.includes('manager') || posteL.includes('responsable')) {
+        updates.tailleEntreprise = '11-50';
+      }
+    }
+
+    // Secteur déduit des tags ou de la source
+    if (!p.secteur) {
+      const sourceMap: Record<string, string> = {
+        github: 'Technologie', producthunt: 'Technologie', crunchbase: 'Startup',
+        malt: 'Freelance', upwork: 'Freelance', behance: 'Design', dribbble: 'Design',
+        indeed: 'Recrutement', welcome_to_the_jungle: 'Technologie',
+      };
+      updates.secteur = sourceMap[p.source] || undefined;
+    }
+
+    return updates;
+  };
+
   const enrichSingle = (id: string) => {
     setEnrichingIds((prev) => new Set([...prev, id]));
+    const p = prospects.find((pr) => pr.id === id);
     setTimeout(() => {
-      updateProspect(id, {
-        status: 'enriched',
-        dateEnrichi: new Date().toISOString().split('T')[0],
-        intentionAchat: (['faible', 'moyenne', 'forte'] as const)[Math.floor(Math.random() * 3)],
-        tailleEntreprise: (['1-10', '11-50', '51-200'] as const)[Math.floor(Math.random() * 3)],
-        chiffreAffaires: `${Math.floor(Math.random() * 900 + 100)}K€`,
-      });
+      if (p) updateProspect(id, enrichProspectData(p));
       setEnrichingIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
       setEnrichedIds((prev) => new Set([...prev, id]));
-    }, 1500 + Math.random() * 1000);
+    }, 800 + Math.random() * 500);
   };
 
   const enrichAll = () => {
@@ -1175,17 +1244,11 @@ const TabEnrichissement: React.FC = () => {
     let done = 0;
     toEnrich.forEach((p, i) => {
       setTimeout(() => {
-        updateProspect(p.id, {
-          status: 'enriched',
-          dateEnrichi: new Date().toISOString().split('T')[0],
-          intentionAchat: (['faible', 'moyenne', 'forte'] as const)[Math.floor(Math.random() * 3)],
-          tailleEntreprise: (['1-10', '11-50', '51-200'] as const)[Math.floor(Math.random() * 3)],
-          chiffreAffaires: `${Math.floor(Math.random() * 900 + 100)}K€`,
-        });
+        updateProspect(p.id, enrichProspectData(p));
         done++;
         setBulkProgress(Math.round((done / toEnrich.length) * 100));
         if (done === toEnrich.length) setTimeout(() => { setBulkEnriching(false); setBulkProgress(0); }, 600);
-      }, i * 400);
+      }, i * 300);
     });
   };
 
@@ -1347,16 +1410,13 @@ const EMAIL_TYPE_LABELS: Record<string, string> = {
 };
 
 const TabConfiguration: React.FC = () => {
-  const { apiKeys: storedApiKeys, updateApiKeys, emailTemplates, addEmailTemplate, updateEmailTemplate, deleteEmailTemplate, phantomAgentId, setPhantomAgentId } = useProspectionStore();
+  const { apiKeys: storedApiKeys, updateApiKeys, emailTemplates, addEmailTemplate, updateEmailTemplate, deleteEmailTemplate, phantomAgentId, setPhantomAgentId, scrapingMaxResults, setScrapingMaxResults } = useProspectionStore();
   const [localApiKeys, setLocalApiKeys] = useState<Record<string, string>>({ ...storedApiKeys });
   const [customActor, setCustomActor] = useState(getCustomActorId());
   const [localPhantomAgentId, setLocalPhantomAgentId] = useState(phantomAgentId);
   const [phantomAgents, setPhantomAgents] = useState<PhantomAgent[]>([]);
   const [loadingPhantoms, setLoadingPhantoms] = useState(false);
-  const [scrapingSettings, setScrapingSettings] = useState({ delay: 2, maxResults: 50, respectRobots: true });
-  const [aiSettings, setAiSettings] = useState({ model: 'gpt-4o', confidenceThreshold: 75 });
-  const [exportSettings, setExportSettings] = useState({ format: 'csv' as 'csv' | 'json' | 'excel', autoExport: false });
-  const [notifSettings, setNotifSettings] = useState({ onJobComplete: true, onNewProspect: false, dailyReport: true });
+  const [scrapingSettings, setScrapingSettings] = useState({ maxResults: scrapingMaxResults });
   const [saved, setSaved] = useState(false);
   const [editingTpl, setEditingTpl] = useState<string | null>(null);
   const [newTplOpen, setNewTplOpen] = useState(false);
@@ -1368,6 +1428,7 @@ const TabConfiguration: React.FC = () => {
     updateApiKeys(localApiKeys as Parameters<typeof updateApiKeys>[0]);
     setCustomActorId(customActor);
     setPhantomAgentId(localPhantomAgentId);
+    setScrapingMaxResults(scrapingSettings.maxResults);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -1389,15 +1450,6 @@ const TabConfiguration: React.FC = () => {
     { key: 'apify',        label: 'Apify API Token',                 placeholder: 'apify_api_...' },
     { key: 'phantombuster',label: 'PhantomBuster API Key',           placeholder: 'xxxxxxxxxx' },
   ];
-
-  const Toggle = ({ value, onChange }: { value: boolean; onChange: () => void }) => (
-    <button
-      onClick={onChange}
-      className={`relative w-11 h-6 rounded-full transition-colors ${value ? 'bg-primary-500' : 'bg-obsidian-600'}`}
-    >
-      <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${value ? 'left-[22px]' : 'left-0.5'}`} />
-    </button>
-  );
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -1522,19 +1574,6 @@ const TabConfiguration: React.FC = () => {
         <div className="space-y-5">
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-sm text-white">Délai entre requêtes</label>
-              <span className="text-sm font-semibold text-primary-400">{scrapingSettings.delay}s</span>
-            </div>
-            <input type="range" min={1} max={10} value={scrapingSettings.delay}
-              onChange={(e) => setScrapingSettings((p) => ({ ...p, delay: parseInt(e.target.value) }))}
-              className="w-full accent-primary-500"
-            />
-            <div className="flex justify-between text-xs text-slate-500 mt-1">
-              <span>1s (rapide)</span><span>10s (sûr)</span>
-            </div>
-          </div>
-          <div>
-            <div className="flex items-center justify-between mb-2">
               <label className="text-sm text-white">Résultats max par plateforme</label>
               <span className="text-sm font-semibold text-primary-400">{scrapingSettings.maxResults}</span>
             </div>
@@ -1546,119 +1585,6 @@ const TabConfiguration: React.FC = () => {
               <span>10</span><span>500</span>
             </div>
           </div>
-          <div className="flex items-center justify-between py-3 border-t border-card-border">
-            <div>
-              <p className="text-sm text-white">Respecter robots.txt</p>
-              <p className="text-xs text-slate-500">Recommandé pour éviter les bans</p>
-            </div>
-            <Toggle value={scrapingSettings.respectRobots} onChange={() => setScrapingSettings((p) => ({ ...p, respectRobots: !p.respectRobots }))} />
-          </div>
-        </div>
-      </div>
-
-      {/* AI Model */}
-      <div className="bg-card border border-card-border rounded-2xl p-5">
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
-            <Brain className="w-4 h-4 text-amber-400" />
-          </div>
-          <div>
-            <h3 className="text-white font-semibold">Modèle IA</h3>
-            <p className="text-slate-500 text-xs">Configuration du modèle d'enrichissement</p>
-          </div>
-        </div>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm text-white mb-2">Modèle d'enrichissement</label>
-            <select
-              value={aiSettings.model}
-              onChange={(e) => setAiSettings((p) => ({ ...p, model: e.target.value }))}
-              className="w-full bg-obsidian-700 border border-card-border rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-primary-500 transition-colors"
-            >
-              <option value="gpt-4o">GPT-4o (Recommandé)</option>
-              <option value="gpt-4o-mini">GPT-4o Mini (Rapide)</option>
-              <option value="claude-3-5-sonnet">Claude 3.5 Sonnet</option>
-              <option value="gemini-pro">Gemini 1.5 Pro</option>
-            </select>
-          </div>
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm text-white">Seuil de confiance minimum</label>
-              <span className="text-sm font-semibold text-amber-400">{aiSettings.confidenceThreshold}%</span>
-            </div>
-            <input type="range" min={50} max={100} value={aiSettings.confidenceThreshold}
-              onChange={(e) => setAiSettings((p) => ({ ...p, confidenceThreshold: parseInt(e.target.value) }))}
-              className="w-full accent-amber-500"
-            />
-            <p className="text-xs text-slate-500 mt-1">Les données en dessous de ce seuil seront marquées comme incertaines</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Export */}
-      <div className="bg-card border border-card-border rounded-2xl p-5">
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-9 h-9 rounded-xl bg-green-500/10 border border-green-500/20 flex items-center justify-center">
-            <Download className="w-4 h-4 text-green-400" />
-          </div>
-          <div>
-            <h3 className="text-white font-semibold">Export</h3>
-            <p className="text-slate-500 text-xs">Format et automatisation des exports</p>
-          </div>
-        </div>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm text-white mb-2">Format d'export</label>
-            <div className="flex gap-3">
-              {(['csv', 'json', 'excel'] as const).map((fmt) => (
-                <button
-                  key={fmt}
-                  onClick={() => setExportSettings((p) => ({ ...p, format: fmt }))}
-                  className={`flex-1 py-2.5 rounded-xl border text-sm font-semibold uppercase transition-all ${exportSettings.format === fmt ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'border-card-border text-slate-400 hover:text-white'}`}
-                >
-                  {fmt}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center justify-between py-3 border-t border-card-border">
-            <div>
-              <p className="text-sm text-white">Export automatique</p>
-              <p className="text-xs text-slate-500">Exporter automatiquement à la fin de chaque campagne</p>
-            </div>
-            <Toggle value={exportSettings.autoExport} onChange={() => setExportSettings((p) => ({ ...p, autoExport: !p.autoExport }))} />
-          </div>
-        </div>
-      </div>
-
-      {/* Notifications */}
-      <div className="bg-card border border-card-border rounded-2xl p-5">
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
-            <BarChart2 className="w-4 h-4 text-blue-400" />
-          </div>
-          <div>
-            <h3 className="text-white font-semibold">Notifications</h3>
-            <p className="text-slate-500 text-xs">Restez informé des activités de scraping</p>
-          </div>
-        </div>
-        <div className="space-y-1">
-          {[
-            { key: 'onJobComplete', label: 'Fin de campagne',          desc: 'Notification quand un job se termine' },
-            { key: 'onNewProspect', label: 'Nouveau prospect qualifié', desc: 'Alerte pour les prospects score > 80' },
-            { key: 'dailyReport',   label: 'Rapport quotidien',         desc: "Résumé email des activités du jour" },
-          ].map(({ key, label, desc }) => (
-            <div key={key} className="flex items-center justify-between py-3 border-b border-card-border last:border-0">
-              <div>
-                <p className="text-sm text-white">{label}</p>
-                <p className="text-xs text-slate-500">{desc}</p>
-              </div>
-              <Toggle
-                value={notifSettings[key as keyof typeof notifSettings]}
-                onChange={() => setNotifSettings((p) => ({ ...p, [key]: !p[key as keyof typeof notifSettings] }))}
-              />
-            </div>
-          ))}
         </div>
       </div>
 

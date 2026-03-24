@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useEffect } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { useStore } from './store/useStore';
 import { Layout } from './components/Layout/Layout';
 import { LoginScreen } from './components/Auth/LoginScreen';
@@ -67,8 +67,13 @@ const App: React.FC = () => {
     return () => window.removeEventListener('popstate', onPopState);
   }, [setActiveSection]);
 
-  // Premier lancement → configuration initiale
-  if (!setupComplete) {
+  // Vérifier si l'admin a déjà configuré son compte (a un passwordHash)
+  const users = useStore((s) => s.users);
+  const adminConfigured = users.some(u => u.role === 'admin' && u.passwordHash);
+  const [showSetup, setShowSetup] = useState(false);
+
+  // Premier lancement → configuration initiale (seulement si aucun admin n'est configuré)
+  if (!adminConfigured && (!setupComplete || showSetup)) {
     return (
       <Suspense fallback={<PageSkeleton />}>
         <FirstRunSetup onSetup={completeSetup} />
@@ -78,7 +83,7 @@ const App: React.FC = () => {
 
   // Si pas connecté → écran de login
   if (!currentUser) {
-    return <LoginScreen onLogin={login} />;
+    return <LoginScreen onLogin={login} onFirstSetup={!adminConfigured ? () => setShowSetup(true) : undefined} />;
   }
 
   // Si freelancer → portail limité (sauf si section autorisée dans permissions)

@@ -31,6 +31,37 @@ export interface Freelancer {
   notes: string;
   dateCreation: string;
   totalFacture: number;       // CA total généré avec ce freelancer
+  iban: string;               // Coordonnées bancaires — IBAN
+  bic: string;                // Coordonnées bancaires — BIC / SWIFT
+  tvaApplicable: boolean;     // true = assujetti TVA, false = art.293B (micro-entreprise)
+  tauxTva: number;            // Taux TVA applicable (0, 5.5, 10, 20) — ignoré si tvaApplicable=false
+}
+
+// ─── DOCUMENT — ACOMPTE ──────────────────────────────────────────────────────
+
+export type AcompteStatut = 'a_payer' | 'paye' | 'partiellement_paye' | 'annule';
+
+export interface DocumentAcompte {
+  id: string;
+  montant: number;              // Montant de l'acompte en €
+  pourcentage: number;          // % du TTC correspondant
+  statut: AcompteStatut;
+  datePrevue: string;           // Date prévue du paiement (ISO)
+  dateReglement?: string;       // Date effective si payé (ISO)
+  moyenPaiement?: string;       // "virement", "chèque", "CB", etc.
+}
+
+// ─── DOCUMENT — PAIEMENT PAR FREELANCER (Annexe 2 contrats) ─────────────────
+
+export interface FreelancerPaiement {
+  freelancerId: string;
+  role: string;                 // Rôle dans le projet (Media Buyer, Monteur, etc.)
+  montantHT: number;
+  tvaApplicable: boolean;
+  tauxTva: number;              // 0, 5.5, 10, 20
+  montantTTC: number;           // Calculé : HT + TVA
+  echeanceConditions: string;   // "50% signature, 50% J+30", etc.
+  iban: string;
 }
 
 // ─── CLIENT ───────────────────────────────────────────────────────────────────

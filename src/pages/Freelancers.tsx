@@ -11,6 +11,7 @@ import { Modal } from '../components/ui/Modal';
 import { exportFreelancersCSV } from '../utils/csvExport';
 import { useDebounce } from '../hooks/useDebounce';
 import { TagPicker } from '../components/ui/TagPicker';
+import { validateIBAN, validateBIC, formatIBAN } from '../utils/ibanValidation';
 
 // ─── Colour helpers ──────────────────────────────────────────────────────────
 
@@ -59,6 +60,10 @@ const emptyForm: FreelancerFormData = {
   tags: [],
   notes: '',
   totalFacture: 0,
+  iban: '',
+  bic: '',
+  tvaApplicable: false,
+  tauxTva: 0,
 };
 
 const SPECIALITES: FreelancerSpecialite[] = [
@@ -146,7 +151,8 @@ export const Freelancers: React.FC = () => {
       email: f.email, telephone: f.telephone, adresse: f.adresse,
       siret: f.siret, numeroTVA: f.numeroTVA, specialite: f.specialite,
       tjm: f.tjm, statut: f.statut, tags: [...f.tags], notes: f.notes,
-      totalFacture: f.totalFacture,
+      totalFacture: f.totalFacture, iban: f.iban || '', bic: f.bic || '',
+      tvaApplicable: f.tvaApplicable ?? false, tauxTva: f.tauxTva ?? 0,
     });
     setIsModalOpen(true);
   };
@@ -492,6 +498,31 @@ export const Freelancers: React.FC = () => {
                       <p className="text-white text-sm font-mono">{detailFreelancer.numeroTVA}</p>
                     </div>
                   )}
+                  <div>
+                    <p className="text-slate-500 text-xs">TVA</p>
+                    <p className={`text-sm font-medium ${detailFreelancer.tvaApplicable ? 'text-white' : 'text-slate-400'}`}>
+                      {detailFreelancer.tvaApplicable ? `Assujetti — ${detailFreelancer.tauxTva || 20}%` : 'Non applicable (art. 293B)'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Coordonnées bancaires */}
+              {(detailFreelancer.iban || detailFreelancer.bic) && (
+                <div className="bg-card border border-card-border rounded-xl p-4 space-y-2">
+                  <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-2">Coordonnées bancaires</p>
+                  {detailFreelancer.iban && (
+                    <div>
+                      <p className="text-slate-500 text-xs">IBAN</p>
+                      <p className="text-white text-sm font-mono">{formatIBAN(detailFreelancer.iban)}</p>
+                    </div>
+                  )}
+                  {detailFreelancer.bic && (
+                    <div>
+                      <p className="text-slate-500 text-xs">BIC / SWIFT</p>
+                      <p className="text-white text-sm font-mono">{detailFreelancer.bic}</p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -742,9 +773,88 @@ export const Freelancers: React.FC = () => {
                 />
               </div>
             </div>
+            {/* TVA applicable */}
+            <div className="mt-3 flex items-center gap-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <div
+                  onClick={() => setFormData(p => ({ ...p, tvaApplicable: !p.tvaApplicable, tauxTva: !p.tvaApplicable ? 20 : 0 }))}
+                  className={clsx(
+                    'w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all cursor-pointer',
+                    formData.tvaApplicable
+                      ? 'bg-primary-500 border-primary-500'
+                      : 'bg-transparent border-slate-500 hover:border-primary-400'
+                  )}
+                >
+                  {formData.tvaApplicable && (
+                    <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 10 8">
+                      <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                </div>
+                <span className={clsx('text-xs font-medium', formData.tvaApplicable ? 'text-white' : 'text-slate-400')}>
+                  Assujetti à la TVA
+                </span>
+              </label>
+              {formData.tvaApplicable && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-slate-500">Taux :</span>
+                  {[5.5, 10, 20].map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setFormData(p => ({ ...p, tauxTva: t }))}
+                      className={clsx(
+                        'px-2 py-0.5 text-[10px] font-bold rounded-md border transition-all',
+                        formData.tauxTva === t
+                          ? 'bg-primary-500/20 border-primary-500/50 text-primary-300'
+                          : 'bg-card border-card-border text-slate-500 hover:text-white'
+                      )}
+                    >
+                      {t}%
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {!formData.tvaApplicable && (
+              <p className="text-[10px] text-slate-500 mt-1">TVA non applicable — article 293B du CGI (micro-entreprise)</p>
+            )}
           </div>
 
-          {/* 5. Tags */}
+          {/* 5. Coordonnées bancaires */}
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Coordonnées bancaires</p>
+            <div className="space-y-3">
+              <div>
+                <FieldLabel>IBAN</FieldLabel>
+                <input
+                  type="text"
+                  value={formData.iban}
+                  onChange={e => setFormData(p => ({ ...p, iban: e.target.value.toUpperCase() }))}
+                  className={clsx(inputCls, 'font-mono')}
+                  placeholder="FR76 1234 5678 9012 3456 7890 123"
+                />
+                {formData.iban && !validateIBAN(formData.iban).valid && (
+                  <p className="text-red-400 text-[10px] mt-1">{validateIBAN(formData.iban).error}</p>
+                )}
+              </div>
+              <div>
+                <FieldLabel>BIC / SWIFT</FieldLabel>
+                <input
+                  type="text"
+                  value={formData.bic}
+                  onChange={e => setFormData(p => ({ ...p, bic: e.target.value.toUpperCase() }))}
+                  className={clsx(inputCls, 'font-mono')}
+                  placeholder="BNPAFRPP"
+                />
+                {formData.bic && !validateBIC(formData.bic).valid && (
+                  <p className="text-red-400 text-[10px] mt-1">{validateBIC(formData.bic).error}</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 6. Tags */}
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Tags</p>
             <TagPicker

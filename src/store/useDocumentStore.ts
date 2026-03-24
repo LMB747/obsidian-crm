@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
+import type { DocumentAcompte, FreelancerPaiement } from '../types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,6 +39,9 @@ export interface FormStateSaved {
   acompteDejaVerse: boolean;
   dateAcompte: string;
   notes: string;
+  signLieu?: string;
+  referentNom?: string;
+  echeanceJours?: number;
   influPlatformes?: string;
   influTypeContenu?: string;
   influNbPublications?: string;
@@ -63,6 +67,16 @@ export interface SavedDocument {
   createdAt: string;
   updatedAt: string;
   sentAt?: string;
+  // Phase 1 — Totaux persistés
+  totalHT?: number;
+  totalTVA?: number;
+  totalTTC?: number;
+  resteAPayer?: number;
+  echeanceJours?: number;           // Défaut 30
+  // Phase 1 — Multi-acomptes
+  acomptes?: DocumentAcompte[];
+  // Phase 1 — Paiements par freelancer (Annexe 2 contrats)
+  freelancerPaiements?: FreelancerPaiement[];
 }
 
 // ─── Counters ─────────────────────────────────────────────────────────────────

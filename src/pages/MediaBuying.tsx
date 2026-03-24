@@ -8,7 +8,7 @@ import {
   LayoutTemplate, ChevronRight
 } from 'lucide-react';
 import {
-  AreaChart, Area, BarChart, Bar, LineChart, Line,
+  AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 import { useMediaBuyingStore } from '../store/useMediaBuyingStore';
@@ -90,24 +90,22 @@ const BID_STRATEGY_LABELS: Record<BidStrategy, string> = {
 
 const KPI_METRICS = ['cpa', 'roas', 'ctr', 'cpc', 'cpm', 'cpl', 'video_views'];
 
-// ─── Monthly performance mock data ────────────────────────────────────────────
-const monthlyData = [
-  { month: 'Oct',  spend: 12400, conversions: 310 },
-  { month: 'Nov',  spend: 18900, conversions: 472 },
-  { month: 'Déc',  spend: 22100, conversions: 553 },
-  { month: 'Jan',  spend: 14300, conversions: 358 },
-  { month: 'Fév',  spend: 16800, conversions: 420 },
-  { month: 'Mar',  spend: 20500, conversions: 513 },
-];
+// ─── Chart data helpers (derived from real campaigns) ────────────────────────
+function buildMonthlyData(campaigns: Campaign[]): { month: string; spend: number; conversions: number }[] {
+  if (campaigns.length === 0) return [];
+  // Aggregate per-campaign metrics as a single entry per campaign name (simplified)
+  return campaigns
+    .filter(c => c.metrics)
+    .slice(0, 6)
+    .map(c => ({
+      month: c.name.slice(0, 12),
+      spend: c.metrics?.spend ?? 0,
+      conversions: c.metrics?.conversions ?? 0,
+    }));
+}
 
-// 30-day spend mock data
-const thirtyDayData = Array.from({ length: 30 }, (_, i) => ({
-  day: `J${i + 1}`,
-  spend: Math.round(400 + Math.random() * 800),
-}));
-
-// Creative mock data
-interface CreativeMock {
+// Creative type — no mock data, only real creatives added by the user
+interface CreativeItem {
   id: string;
   title: string;
   type: 'image' | 'video' | 'carousel';
@@ -117,23 +115,14 @@ interface CreativeMock {
   performance: 'best' | 'good' | 'average' | 'poor';
 }
 
-const MOCK_CREATIVES: CreativeMock[] = [
-  { id: '1', title: 'Bannière Promo BF 1200x628', type: 'image',    platform: 'meta',    ctr: 3.2, spend: 4200, performance: 'best' },
-  { id: '2', title: 'Vidéo UGC 15s TikTok',       type: 'video',    platform: 'tiktok',  ctr: 2.8, spend: 2100, performance: 'good' },
-  { id: '3', title: 'Carousel Produits 5 slides',  type: 'carousel', platform: 'meta',    ctr: 1.9, spend: 3100, performance: 'good' },
-  { id: '4', title: 'Display Google 300x250',      type: 'image',    platform: 'google',  ctr: 0.4, spend: 1800, performance: 'average' },
-  { id: '5', title: 'Vidéo Brand 30s YouTube',     type: 'video',    platform: 'google',  ctr: 0.8, spend: 5600, performance: 'average' },
-  { id: '6', title: 'Story Mobile 9:16',           type: 'image',    platform: 'meta',    ctr: 0.3, spend: 900,  performance: 'poor' },
-];
-
-const PERF_STYLES: Record<CreativeMock['performance'], string> = {
+const PERF_STYLES: Record<CreativeItem['performance'], string> = {
   best:    'bg-accent-green/20 text-accent-green',
   good:    'bg-blue-500/20 text-blue-400',
   average: 'bg-amber-500/20 text-amber-400',
   poor:    'bg-red-500/20 text-red-400',
 };
 
-const PERF_LABELS: Record<CreativeMock['performance'], string> = {
+const PERF_LABELS: Record<CreativeItem['performance'], string> = {
   best:    'Excellent',
   good:    'Bon',
   average: 'Moyen',
@@ -242,11 +231,14 @@ const DashboardTab: React.FC<{ campaigns: Campaign[] }> = ({ campaigns }) => {
         <KPICard label="CPA Moyen"       value={fmtEur(avgCpa)}      sub="coût par conversion"icon={Target}       color="bg-amber-500/20 text-amber-400" />
       </div>
 
-      {/* Area chart */}
+      {/* Area chart — derived from real campaign data */}
       <div className="bg-card border border-card-border rounded-2xl p-6">
-        <h3 className="text-white font-semibold mb-4">Performance mensuelle</h3>
+        <h3 className="text-white font-semibold mb-4">Performance par campagne</h3>
+        {buildMonthlyData(campaigns).length === 0 ? (
+          <div className="flex items-center justify-center h-[220px] text-slate-500 text-sm">Aucune donnée — créez des campagnes pour voir les graphiques</div>
+        ) : (
         <ResponsiveContainer width="100%" height={220}>
-          <AreaChart data={monthlyData}>
+          <AreaChart data={buildMonthlyData(campaigns)}>
             <defs>
               <linearGradient id="colorSpend" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%"  stopColor="#7c3aed" stopOpacity={0.4} />
@@ -266,6 +258,7 @@ const DashboardTab: React.FC<{ campaigns: Campaign[] }> = ({ campaigns }) => {
             <Area type="monotone" dataKey="conversions" name="Conversions"   stroke="#06b6d4" fill="url(#colorConv)"  strokeWidth={2} />
           </AreaChart>
         </ResponsiveContainer>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -979,18 +972,12 @@ const BudgetTab: React.FC<{ campaigns: Campaign[] }> = ({ campaigns }) => {
           </ResponsiveContainer>
         </div>
 
-        {/* 30-day spend trend */}
+        {/* Daily spend trend — requires real tracking data */}
         <div className="bg-card border border-card-border rounded-2xl p-6">
-          <h3 className="text-white font-semibold mb-4">Dépenses sur 30 jours</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={thirtyDayData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" />
-              <XAxis dataKey="day" tick={{ fill: '#94a3b8', fontSize: 10 }} axisLine={false} tickLine={false} interval={4} />
-              <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
-              <Tooltip content={<CustomTooltip />} />
-              <Line type="monotone" dataKey="spend" name="Spend (€)" stroke="#06b6d4" strokeWidth={2} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
+          <h3 className="text-white font-semibold mb-4">Dépenses journalières</h3>
+          <div className="flex items-center justify-center h-[220px] text-slate-500 text-sm">
+            Disponible avec l'intégration API des plateformes publicitaires
+          </div>
         </div>
       </div>
 
@@ -1123,7 +1110,7 @@ const CreativeModal: React.FC<CreativeModalProps> = ({ onClose }) => {
   );
 };
 
-const TYPE_ICON: Record<CreativeMock['type'], React.FC<{ className?: string }>> = {
+const TYPE_ICON: Record<CreativeItem['type'], React.FC<{ className?: string }>> = {
   image:    Image,
   video:    Video,
   carousel: Layers,
@@ -1131,11 +1118,13 @@ const TYPE_ICON: Record<CreativeMock['type'], React.FC<{ className?: string }>> 
 
 const CreativesTab: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
-  const [filterType, setFilterType] = useState<CreativeMock['type'] | ''>('');
+  const [filterType, setFilterType] = useState<CreativeItem['type'] | ''>('');
   const [filterPlatform, setFilterPlatform] = useState<Platform | ''>('');
-  const [filterPerf, setFilterPerf] = useState<CreativeMock['performance'] | ''>('');
+  const [filterPerf, setFilterPerf] = useState<CreativeItem['performance'] | ''>('');
 
-  const filtered = MOCK_CREATIVES.filter((c) => {
+  // No mock data — creatives will come from real store when implemented
+  const allCreatives: CreativeItem[] = [];
+  const filtered = allCreatives.filter((c) => {
     if (filterType && c.type !== filterType) return false;
     if (filterPlatform && c.platform !== filterPlatform) return false;
     if (filterPerf && c.performance !== filterPerf) return false;
@@ -1150,7 +1139,7 @@ const CreativesTab: React.FC = () => {
       <div className="space-y-5">
         {/* Header */}
         <div className="flex flex-wrap items-center gap-3">
-          <select className={selectCls} value={filterType} onChange={(e) => setFilterType(e.target.value as CreativeMock['type'] | '')}>
+          <select className={selectCls} value={filterType} onChange={(e) => setFilterType(e.target.value as CreativeItem['type'] | '')}>
             <option value="">Tous types</option>
             <option value="image">Image</option>
             <option value="video">Vidéo</option>
@@ -1162,7 +1151,7 @@ const CreativesTab: React.FC = () => {
               <option key={p} value={p}>{PLATFORM_META[p].label}</option>
             ))}
           </select>
-          <select className={selectCls} value={filterPerf} onChange={(e) => setFilterPerf(e.target.value as CreativeMock['performance'] | '')}>
+          <select className={selectCls} value={filterPerf} onChange={(e) => setFilterPerf(e.target.value as CreativeItem['performance'] | '')}>
             <option value="">Toutes perfs</option>
             <option value="best">Excellent</option>
             <option value="good">Bon</option>
@@ -1181,12 +1170,18 @@ const CreativesTab: React.FC = () => {
         </div>
 
         {/* Grid */}
+        {filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <Image className="w-12 h-12 text-slate-600 mb-4" />
+            <p className="text-slate-400 font-medium">Aucun créatif</p>
+            <p className="text-slate-500 text-sm mt-1">Ajoutez vos créatifs publicitaires pour suivre leurs performances</p>
+          </div>
+        ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((c) => {
             const TypeIcon = TYPE_ICON[c.type];
             return (
               <div key={c.id} className="bg-card border border-card-border rounded-2xl p-5 hover:border-primary-500/40 transition-all group">
-                {/* Type icon placeholder */}
                 <div className="w-full h-28 bg-obsidian-700/60 rounded-xl flex items-center justify-center mb-4 group-hover:bg-obsidian-700 transition-colors">
                   <TypeIcon className="w-10 h-10 text-slate-500" />
                 </div>
@@ -1208,6 +1203,7 @@ const CreativesTab: React.FC = () => {
             );
           })}
         </div>
+        )}
       </div>
     </>
   );
@@ -1230,12 +1226,16 @@ const ConnectorModal: React.FC<ConnectorModalProps> = ({ connector, onClose }) =
   const inputCls = 'w-full bg-obsidian-700 border border-card-border rounded-xl px-3 py-2 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-primary-500 transition-colors';
   const labelCls = 'block text-xs font-medium text-slate-400 mb-1';
 
+  // Note: real API validation requires backend integration with each platform
   const handleTest = () => {
+    if (!apiKey.trim()) return;
     setTesting(true);
+    setTested(false);
     setTimeout(() => {
       setTesting(false);
+      // Mark as tested — actual validation happens when using the API
       setTested(true);
-    }, 1200);
+    }, 800);
   };
 
   const handleConnect = (e: React.FormEvent) => {
@@ -1295,8 +1295,8 @@ const ConnectorModal: React.FC<ConnectorModalProps> = ({ connector, onClose }) =
             {testing ? 'Test en cours...' : 'Tester la connexion'}
           </button>
           {tested && (
-            <div className="flex items-center gap-2 text-accent-green text-sm">
-              <CheckCircle className="w-4 h-4" /> Connexion réussie
+            <div className="flex items-center gap-2 text-amber-400 text-sm">
+              <CheckCircle className="w-4 h-4" /> Clé enregistrée — la validation se fait lors de l'utilisation
             </div>
           )}
           <div className="flex justify-end gap-3 pt-2">

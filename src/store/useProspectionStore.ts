@@ -34,10 +34,12 @@ interface ProspectionStore {
   apiKeys: ProspectionApiKeys;
   emailTemplates: EmailTemplate[];
   phantomAgentId: string; // ID du Phantom à lancer (configuré par l'utilisateur)
+  scrapingMaxResults: number; // Max résultats par plateforme (configurable dans l'UI)
 
   // API key action
   updateApiKeys: (keys: Partial<ProspectionApiKeys>) => void;
   setPhantomAgentId: (id: string) => void;
+  setScrapingMaxResults: (n: number) => void;
 
   // Email template actions
   addEmailTemplate: (tpl: Omit<EmailTemplate, 'id'>) => void;
@@ -90,6 +92,7 @@ export const useProspectionStore = create<ProspectionStore>()(
       selectedProspects: [],
       apiKeys: { apify: '', phantombuster: '' },
       phantomAgentId: '',
+      scrapingMaxResults: 50,
       emailTemplates: [
         { id: 'tpl-1', nom: 'Premier contact', type: 'premier_contact', sujet: 'Collaboration {{PLATEFORME}} — {{NOM_AGENCE}}', corps: 'Bonjour {{PRENOM}},\n\nJe me permets de vous contacter car votre travail chez {{ENTREPRISE}} a retenu notre attention.\n\nChez {{NOM_AGENCE}}, nous accompagnons des entreprises comme la vôtre en stratégie digitale et marketing.\n\nSeriez-vous disponible pour un échange de 15 minutes cette semaine ?\n\nBien cordialement,\n{{NOM_AGENCE}}' },
         { id: 'tpl-2', nom: 'Relance', type: 'relance', sujet: 'Suite à mon message — {{NOM_AGENCE}}', corps: 'Bonjour {{PRENOM}},\n\nJe me permets de revenir vers vous suite à mon précédent message.\n\nJe serais ravi de pouvoir échanger avec vous sur les besoins de {{ENTREPRISE}} en termes de stratégie digitale.\n\nÊtes-vous disponible cette semaine pour un court appel ?\n\nCordialement,\n{{NOM_AGENCE}}' },
@@ -109,12 +112,23 @@ export const useProspectionStore = create<ProspectionStore>()(
       },
 
       addProspects: (newProspects) =>
-        set((state) => ({
-          prospects: [
-            ...state.prospects,
-            ...newProspects.map((p) => ({ ...p, id: p.id || uuidv4() })),
-          ],
-        })),
+        set((state) => {
+          // Déduplication : clé = email OU (prenom+nom+entreprise) en lowercase
+          const dedupKey = (p: ProspectContact) => {
+            if (p.email) return `email:${p.email.toLowerCase().trim()}`;
+            return `name:${p.prenom.toLowerCase().trim()}|${p.nom.toLowerCase().trim()}|${p.entreprise.toLowerCase().trim()}`;
+          };
+          const existingKeys = new Set(state.prospects.map(dedupKey));
+          const unique = newProspects
+            .map((p) => ({ ...p, id: p.id || uuidv4() }))
+            .filter((p) => {
+              const key = dedupKey(p);
+              if (existingKeys.has(key)) return false;
+              existingKeys.add(key);
+              return true;
+            });
+          return { prospects: [...state.prospects, ...unique] };
+        }),
 
       updateProspect: (id, updates) =>
         set((state) => ({
@@ -141,6 +155,7 @@ export const useProspectionStore = create<ProspectionStore>()(
         set((state) => ({ apiKeys: { ...state.apiKeys, ...keys } })),
 
       setPhantomAgentId: (id) => set({ phantomAgentId: id.trim() }),
+      setScrapingMaxResults: (n) => set({ scrapingMaxResults: Math.max(10, Math.min(500, n)) }),
 
       // ─── Job Actions ──────────────────────────────────────────────────────
       addScrapeJob: (job) =>
@@ -221,7 +236,7 @@ export const useProspectionStore = create<ProspectionStore>()(
 
       // ─── Start Scrape Job ─────────────────────────────────────────────────
       startScrapeJob: (config) => {
-        const { apiKeys, phantomAgentId } = useProspectionStore.getState();
+        const { apiKeys, phantomAgentId, scrapingMaxResults } = useProspectionStore.getState();
         const jobId = uuidv4();
         const job: ScrapeJob = {
           id: jobId,
@@ -317,7 +332,7 @@ export const useProspectionStore = create<ProspectionStore>()(
               // Lancer le Phantom avec les arguments de recherche
               const argument: Record<string, unknown> = {
                 search: config.keywords.join(', '),
-                numberOfProfiles: 30,
+                numberOfProfiles: scrapingMaxResults,
               };
               if (config.location) argument.location = config.location;
               if (config.sector) argument.category = config.sector;
@@ -405,7 +420,7 @@ export const useProspectionStore = create<ProspectionStore>()(
           keywords: keywordsStr,
           location: config.location || '',
           sector: config.sector || '',
-          maxResults: 30,
+          maxResults: scrapingMaxResults,
         };
 
         const supportedPlatforms = config.platforms.filter(
@@ -530,6 +545,7 @@ export const useProspectionStore = create<ProspectionStore>()(
         filters: state.filters,
         apiKeys: state.apiKeys,
         phantomAgentId: state.phantomAgentId,
+        scrapingMaxResults: state.scrapingMaxResults,
       }),
     }
   )

@@ -14,6 +14,7 @@ import { injectFacture, injectDevis, injectContrat } from '../lib/documentInject
 import { EmailModal } from '../components/EmailModal/EmailModal';
 import clsx from 'clsx';
 import { v4 as uuidv4 } from 'uuid';
+import type { DocumentAcompte, AcompteStatut } from '../types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type DocType = 'facture' | 'devis' | 'contrat' | 'contrat_influenceur';
@@ -49,6 +50,10 @@ interface FormState {
   acompteDejaVerse: boolean;
   dateAcompte: string;
   notes: string;
+  echeanceJours: number;       // Nombre de jours d'échéance (défaut 30)
+  // Contract fields
+  signLieu: string;
+  referentNom: string;
   // Influencer contract fields
   influPlatformes: string;
   influTypeContenu: string;
@@ -151,7 +156,7 @@ const FieldInput: React.FC<{
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export const Documents: React.FC = () => {
-  const { clients, freelancers, invoices, addInvoice, settings } = useStore();
+  const { clients, freelancers, projects, invoices, addInvoice, settings } = useStore();
   const { documents, saveDocument, updateDocument, deleteDocument, duplicateDocument, getNextNumber } = useDocumentStore();
 
   const today    = useMemo(() => new Date().toISOString().split('T')[0], []);
@@ -168,6 +173,9 @@ export const Documents: React.FC = () => {
   const [selectedClientId, setSelectedClientId] = useState('');
   const [clientSearch, setClientSearch]   = useState('');
   const [showClientSearch, setShowClientSearch] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [projectSearch, setProjectSearch] = useState('');
+  const [showProjectSearch, setShowProjectSearch] = useState(false);
   const [selectedFreelancerId, setSelectedFreelancerId] = useState('');
   const [selectedFreelancerIds, setSelectedFreelancerIds] = useState<string[]>([]);
   const [freelancerSearch, setFreelancerSearch] = useState('');
@@ -190,6 +198,8 @@ export const Documents: React.FC = () => {
   const [secPrestations, setSecPrestations] = useState(true);
   const [secFinance, setSecFinance]       = useState(true);
   const [secNotes, setSecNotes]           = useState(false);
+  const [secSignature, setSecSignature]   = useState(false);
+  const [secSOW, setSecSOW]               = useState(false);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -208,12 +218,82 @@ export const Documents: React.FC = () => {
     clientAdresse: '', clientEmail: '', clientTel: '',
     clientRepresentant: '', projetNom: '', projetObjet: '',
     dateDebut: today, dateFin: in30days,
-    tvaPercent: 20, acomptePercent: 0, acompteDejaVerse: false, dateAcompte: '', notes: '',
+    tvaPercent: 20, acomptePercent: 0, acompteDejaVerse: false, dateAcompte: '', notes: '', echeanceJours: 30,
+    signLieu: '', referentNom: '',
     influPlatformes: '', influTypeContenu: '', influNbPublications: '', influDatesPublication: '',
     influDroitsUtilisation: '', influExclusivite: '', influRemuneration: '', influKpis: '', influValidation: '',
   });
 
   const [items, setItems] = useState<ServiceItem[]>([newItem()]);
+
+  // Per-freelancer contract details (role, montant, échéance, TVA, prestations)
+  interface PrestLine { id: string; description: string; montant: number }
+  interface PrestDetail { role: string; montantHT: number; tvaLabel: string; echeance: string; prestations: PrestLine[] }
+  const defaultPrestDetail = (): PrestDetail => ({ role: '', montantHT: 0, tvaLabel: 'TVA non applicable - art.293B', echeance: '50% à la signature, 50% à J+30', prestations: [] });
+  const [prestDetails, setPrestDetails] = useState<Record<string, PrestDetail>>({});
+  const updatePrestDetail = (fid: string, key: keyof PrestDetail, val: any) => {
+    setPrestDetails(prev => ({
+      ...prev,
+      [fid]: { ...(prev[fid] || defaultPrestDetail()), [key]: val },
+    }));
+  };
+  const addPrestLine = (fid: string) => {
+    setPrestDetails(prev => {
+      const det = prev[fid] || defaultPrestDetail();
+      const line: PrestLine = { id: uuidv4(), description: '', montant: 0 };
+      const updated = { ...det, prestations: [...det.prestations, line] };
+      // Recalculate montantHT from sum of lines
+      updated.montantHT = updated.prestations.reduce((s, l) => s + l.montant, 0);
+      return { ...prev, [fid]: updated };
+    });
+  };
+  const updatePrestLine = (fid: string, lineId: string, field: keyof PrestLine, val: string | number) => {
+    setPrestDetails(prev => {
+      const det = prev[fid] || defaultPrestDetail();
+      const updated = {
+        ...det,
+        prestations: det.prestations.map(l => l.id === lineId ? { ...l, [field]: val } : l),
+      };
+      // Recalculate montantHT
+      updated.montantHT = updated.prestations.reduce((s, l) => s + (typeof l.montant === 'number' ? l.montant : parseFloat(String(l.montant)) || 0), 0);
+      return { ...prev, [fid]: updated };
+    });
+  };
+  const removePrestLine = (fid: string, lineId: string) => {
+    setPrestDetails(prev => {
+      const det = prev[fid] || defaultPrestDetail();
+      const updated = { ...det, prestations: det.prestations.filter(l => l.id !== lineId) };
+      updated.montantHT = updated.prestations.reduce((s, l) => s + l.montant, 0);
+      return { ...prev, [fid]: updated };
+    });
+  };
+
+  // Multi-acompte management
+  const [acomptes, setAcomptes] = useState<DocumentAcompte[]>([]);
+  const addAcompte = () => {
+    const newAcompte: DocumentAcompte = {
+      id: uuidv4(),
+      montant: Math.round(totals.ttc * 0.3 * 100) / 100,
+      pourcentage: 30,
+      statut: 'a_payer',
+      datePrevue: form.date || new Date().toISOString().split('T')[0],
+    };
+    setAcomptes(prev => [...prev, newAcompte]);
+  };
+  const updateAcompte = (id: string, updates: Partial<DocumentAcompte>) => {
+    setAcomptes(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
+  };
+  const removeAcompte = (id: string) => {
+    setAcomptes(prev => prev.filter(a => a.id !== id));
+  };
+  const totalAcomptesPaye = useMemo(() =>
+    acomptes.filter(a => a.statut === 'paye').reduce((s, a) => s + a.montant, 0),
+    [acomptes]
+  );
+  const totalAcomptesPrevu = useMemo(() =>
+    acomptes.reduce((s, a) => s + a.montant, 0),
+    [acomptes]
+  );
 
   const setF = (key: keyof FormState) => (val: string | number) => {
     setForm(f => ({ ...f, [key]: val }));
@@ -246,6 +326,45 @@ export const Documents: React.FC = () => {
     setShowClientSearch(false);
     setInjected(false);
   }, [selectedClientId, clients]);
+
+  // ── Auto-fill from project (contracts) ───────────────────────────────────────
+  const filteredProjects = useMemo(() => {
+    if (!projectSearch) return projects.slice(0, 8);
+    const q = projectSearch.toLowerCase();
+    return projects.filter(p =>
+      p.nom.toLowerCase().includes(q) || p.clientNom?.toLowerCase().includes(q)
+    ).slice(0, 8);
+  }, [projects, projectSearch]);
+
+  useEffect(() => {
+    if (!selectedProjectId) return;
+    const project = projects.find(p => p.id === selectedProjectId);
+    if (!project) return;
+
+    // Auto-fill project fields
+    setForm(f => ({
+      ...f,
+      projetNom:   project.nom,
+      projetObjet: project.description || '',
+      dateDebut:   project.dateDebut || f.dateDebut,
+      dateFin:     project.dateFin || f.dateFin,
+    }));
+
+    // Auto-fill client from project
+    if (project.clientId) {
+      setSelectedClientId(project.clientId);
+    }
+
+    // Auto-populate freelancers from project
+    if (project.freelancerIds && project.freelancerIds.length > 0) {
+      setSelectedFreelancerIds(project.freelancerIds);
+      setSelectedFreelancerId(project.freelancerIds[0]);
+    }
+
+    setProjectSearch(project.nom);
+    setShowProjectSearch(false);
+    setInjected(false);
+  }, [selectedProjectId, projects]);
 
   // ── Auto-fill from freelancer ────────────────────────────────────────────────
   const selectedFreelancer = useMemo(
@@ -310,6 +429,17 @@ export const Documents: React.FC = () => {
         updated.total = Math.round(Number(updated.quantite) * Number(updated.prixUnitaire) * 100) / 100;
         updated.tarif = updated.total > 0 ? `${updated.total.toLocaleString('fr-FR')} €` : '';
       }
+      // Devis/Contrat: parse tarif text to compute total
+      if (field === 'tarif') {
+        const parsed = parseFloat(String(val).replace(/[^\d.,]/g, '').replace(',', '.'));
+        if (!isNaN(parsed) && parsed > 0) {
+          updated.total = Math.round(parsed * 100) / 100;
+          updated.prixUnitaire = updated.total;
+          updated.quantite = 1;
+        } else {
+          updated.total = 0;
+        }
+      }
       if (field === 'offert' && val) {
         updated.tarif = 'Offert';
       }
@@ -347,6 +477,8 @@ export const Documents: React.FC = () => {
       adresse:    selectedFreelancer.adresse,
       email:      selectedFreelancer.email,
       telephone:  selectedFreelancer.telephone,
+      iban:       selectedFreelancer.iban || undefined,
+      bic:        selectedFreelancer.bic || undefined,
     } : undefined;
 
     if (docType === 'facture') {
@@ -368,6 +500,9 @@ export const Documents: React.FC = () => {
         tva:        totals.tva,
         montantTTC: totals.ttc,
         acompte:    totals.acompte,   // toujours passer (0 = effacer la ligne)
+        acomptePaye: form.acompteDejaVerse || acomptes.some(a => a.statut === 'paye'),
+        resteAPayer: acomptes.length > 0 ? totals.ttc - totalAcomptesPaye : totals.reste,
+        echeanceJours: form.echeanceJours || 30,
         notes:      form.notes || undefined,
         provider:   providerPayload,
       });
@@ -394,6 +529,56 @@ export const Documents: React.FC = () => {
         provider:   providerPayload,
       });
     } else {
+      // Build signataries list from client + freelancers
+      const signataires: { titre: string; nom: string; role: string }[] = [];
+      if (form.clientNom) {
+        signataires.push({
+          titre: 'Pour le Client',
+          nom: form.clientRepresentant || form.clientNom,
+          role: form.clientEntreprise ? `Représentant — ${form.clientEntreprise}` : 'Fonction',
+        });
+      }
+      // Build per-freelancer prestataire details for injection
+      const contratPrestataires = selectedContractFreelancers.map(f => {
+        const det = prestDetails[f.id] || defaultPrestDetail();
+        const fullName = `${f.prenom} ${f.nom}`;
+        // Add to signataires
+        signataires.push({
+          titre: det.role ? `Le ${det.role}` : 'Le Prestataire',
+          nom: fullName,
+          role: f.siret || 'SIRET',
+        });
+        return {
+          nom: fullName,
+          role: det.role || f.specialite,
+          siret: f.siret,
+          adresse: f.adresse,
+          montantHT: det.montantHT,
+          tvaLabel: det.tvaLabel,
+          echeance: det.echeance,
+          iban: f.iban || '',
+        };
+      });
+      // Fallback: if no contract freelancers but a single selected freelancer
+      if (contratPrestataires.length === 0 && selectedFreelancer) {
+        const det = prestDetails[selectedFreelancer.id] || defaultPrestDetail();
+        signataires.push({
+          titre: 'Le Prestataire',
+          nom: `${selectedFreelancer.prenom} ${selectedFreelancer.nom}`,
+          role: selectedFreelancer.siret || selectedFreelancer.entreprise || selectedFreelancer.specialite,
+        });
+        contratPrestataires.push({
+          nom: `${selectedFreelancer.prenom} ${selectedFreelancer.nom}`,
+          role: det.role || selectedFreelancer.specialite,
+          siret: selectedFreelancer.siret,
+          adresse: selectedFreelancer.adresse,
+          montantHT: det.montantHT,
+          tvaLabel: det.tvaLabel,
+          echeance: det.echeance,
+          iban: selectedFreelancer.iban || '',
+        });
+      }
+
       injectContrat(doc, {
         numero:             form.numero,
         date:               form.date,
@@ -404,12 +589,19 @@ export const Documents: React.FC = () => {
         projetObjet:        form.projetObjet,
         dateDebut:          form.dateDebut,
         dateFin:            form.dateFin,
+        signLieu:           form.signLieu || undefined,
+        signDate:           form.date || undefined,
+        referentNom:        form.referentNom || undefined,
+        sowReferentClient:  form.clientRepresentant || form.clientNom || undefined,
+        sowReferentPrestataires: form.referentNom || undefined,
+        signataires:        signataires.length > 0 ? signataires : undefined,
+        prestataires:       contratPrestataires.length > 0 ? contratPrestataires : undefined,
         provider:           providerPayload,
       });
     }
     setInjected(true);
     setSyncing(false);
-  }, [docType, form, items, totals, iframeLoaded, selectedFreelancer]);
+  }, [docType, form, items, totals, iframeLoaded, selectedFreelancer, selectedContractFreelancers, prestDetails]);
 
   // ── Auto-sync ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -417,7 +609,7 @@ export const Documents: React.FC = () => {
     setSyncing(true);
     const t = setTimeout(() => { handleInject(); }, 700);
     return () => clearTimeout(t);
-  }, [form, items, autoSync, iframeLoaded, selectedFreelancer]);
+  }, [form, items, autoSync, iframeLoaded, selectedFreelancer, selectedContractFreelancers, prestDetails]);
 
   // Mark as not injected when anything changes (non-autoSync)
   useEffect(() => {
@@ -564,6 +756,8 @@ export const Documents: React.FC = () => {
 
   // ── Reset form ───────────────────────────────────────────────────────────────
   const handleReset = () => {
+    setSelectedProjectId('');
+    setProjectSearch('');
     setSelectedClientId('');
     setClientSearch('');
     setSelectedFreelancerId('');
@@ -576,10 +770,13 @@ export const Documents: React.FC = () => {
       clientAdresse: '', clientEmail: '', clientTel: '',
       clientRepresentant: '', projetNom: '', projetObjet: '',
       dateDebut: today, dateFin: in30days,
-      tvaPercent: 20, acomptePercent: 0, acompteDejaVerse: false, dateAcompte: '', notes: '',
+      tvaPercent: 20, acomptePercent: 0, acompteDejaVerse: false, dateAcompte: '', notes: '', echeanceJours: 30,
+      signLieu: '', referentNom: '',
       influPlatformes: '', influTypeContenu: '', influNbPublications: '', influDatesPublication: '',
       influDroitsUtilisation: '', influExclusivite: '', influRemuneration: '', influKpis: '', influValidation: '',
     });
+    setPrestDetails({});
+    setAcomptes([]);
     setInjected(false);
     setSavedToInvoices(false);
   };
@@ -629,6 +826,9 @@ export const Documents: React.FC = () => {
     setDocType(doc.type);
     setForm({
       ...doc.formData,
+      signLieu: doc.formData.signLieu ?? '',
+      referentNom: (doc.formData as any).referentNom ?? '',
+      echeanceJours: doc.formData.echeanceJours ?? 30,
       influPlatformes: doc.formData.influPlatformes ?? '',
       influTypeContenu: doc.formData.influTypeContenu ?? '',
       influNbPublications: doc.formData.influNbPublications ?? '',
@@ -942,6 +1142,13 @@ export const Documents: React.FC = () => {
                 </div>
               )}
 
+              {/* Référent coordination (contrats) */}
+              {(docType === 'contrat' || docType === 'contrat_influenceur') && (
+                <div className="pt-1">
+                  <FieldInput label="Référent coordination" value={form.referentNom} onChange={setF('referentNom')} placeholder="Nom du chef de projet / référent technique" />
+                </div>
+              )}
+
               {/* Influencer-specific fields */}
               {docType === 'contrat_influenceur' && (
                 <div className="space-y-2 pt-2 border-t border-pink-500/20">
@@ -970,6 +1177,72 @@ export const Documents: React.FC = () => {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── Section: Projet (contracts only) ─────────────────────────── */}
+          {(docType === 'contrat' || docType === 'contrat_influenceur') && (
+            <div className="border-b border-card-border/50">
+              <div className="p-4 space-y-2.5">
+                <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                  Lier à un projet
+                </label>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={projectSearch}
+                    onChange={e => { setProjectSearch(e.target.value); setShowProjectSearch(true); }}
+                    onFocus={() => setShowProjectSearch(true)}
+                    placeholder="Rechercher un projet…"
+                    className="w-full bg-obsidian-700 border border-card-border text-white text-xs rounded-lg py-2 pl-7 pr-8 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-amber-500/60 focus:border-amber-500/60 transition-all"
+                  />
+                  {projectSearch && (
+                    <button onClick={() => { setProjectSearch(''); setSelectedProjectId(''); setShowProjectSearch(false); }} className="absolute right-2 top-1/2 -translate-y-1/2">
+                      <X className="w-3 h-3 text-slate-500 hover:text-white" />
+                    </button>
+                  )}
+                </div>
+                {showProjectSearch && filteredProjects.length > 0 && (
+                  <div className="absolute left-0 right-0 mt-1 bg-obsidian-700 border border-card-border rounded-xl overflow-hidden shadow-card z-20 mx-4">
+                    {filteredProjects.map(p => (
+                      <button
+                        key={p.id}
+                        onClick={() => { setSelectedProjectId(p.id); }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-amber-500/10 transition-colors text-left"
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                          <Briefcase className="w-3.5 h-3.5 text-amber-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-xs font-semibold truncate">{p.nom}</p>
+                          <p className="text-slate-500 text-[10px] truncate">{p.clientNom} · {p.freelancerIds?.length || 0} prestataire(s) · {p.statut}</p>
+                        </div>
+                        {selectedProjectId === p.id && <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {selectedProjectId && (() => {
+                  const proj = projects.find(p => p.id === selectedProjectId);
+                  if (!proj) return null;
+                  return (
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Briefcase className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-xs font-bold truncate">{proj.nom}</p>
+                          <p className="text-amber-300 text-[10px]">{proj.clientNom} · {proj.freelancerIds?.length || 0} prestataire(s)</p>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-slate-500">Client, prestataires, dates et nom du projet auto-remplis depuis le projet.</p>
+                    </div>
+                  );
+                })()}
+                {!selectedProjectId && (
+                  <p className="text-[10px] text-slate-500 text-center">Optionnel — lie le contrat à un projet existant pour auto-remplir les champs.</p>
+                )}
+              </div>
             </div>
           )}
 
@@ -1151,14 +1424,39 @@ export const Documents: React.FC = () => {
                 // Multi-freelancer mode for contracts
                 selectedContractFreelancers.length > 0 ? (
                   <div className="space-y-2">
-                    {selectedContractFreelancers.map(f => (
-                      <div key={f.id} className="bg-primary-500/10 border border-primary-500/30 rounded-xl p-3">
+                    {/* Annexe 2 summary */}
+                    {selectedContractFreelancers.length > 0 && (
+                      <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-2.5 mb-1">
+                        <p className="text-[9px] font-bold text-amber-400 uppercase tracking-wider mb-1.5">Annexe 2 — Répartition paiements</p>
+                        <div className="space-y-1">
+                          {selectedContractFreelancers.map(f => {
+                            const det = prestDetails[f.id] || defaultPrestDetail();
+                            return (
+                              <div key={f.id} className="flex items-center justify-between text-[10px]">
+                                <span className="text-slate-300 truncate flex-1">{det.role || f.specialite} — {f.prenom} {f.nom}</span>
+                                <span className="text-white font-semibold ml-2">{(det.montantHT || 0).toLocaleString('fr-FR')} €</span>
+                              </div>
+                            );
+                          })}
+                          <div className="flex items-center justify-between text-[10px] pt-1 border-t border-amber-500/20">
+                            <span className="text-amber-400 font-bold">Total contrat</span>
+                            <span className="text-amber-400 font-bold">
+                              {selectedContractFreelancers.reduce((s, f) => s + (prestDetails[f.id]?.montantHT || 0), 0).toLocaleString('fr-FR')} €
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {selectedContractFreelancers.map((f, idx) => {
+                      const det = prestDetails[f.id] || defaultPrestDetail();
+                      return (
+                      <div key={f.id} className="bg-primary-500/10 border border-primary-500/30 rounded-xl p-3 space-y-2">
                         <div className="flex items-center gap-2">
                           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
                             <span className="text-white text-xs font-bold">{f.prenom.charAt(0)}{f.nom.charAt(0)}</span>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-white text-xs font-bold">{f.prenom} {f.nom}</p>
+                            <p className="text-white text-xs font-bold">{idx + 1}. {f.prenom} {f.nom}</p>
                             <p className="text-primary-300 text-[10px]">{f.entreprise} · {f.specialite}</p>
                           </div>
                           <button
@@ -1169,14 +1467,56 @@ export const Documents: React.FC = () => {
                             <X className="w-3.5 h-3.5" />
                           </button>
                         </div>
-                        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] mt-2">
+                        {/* Contract-specific: Role + TVA + Échéance */}
+                        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-primary-500/20">
+                          <div>
+                            <label className="block text-[9px] font-semibold text-slate-500 uppercase tracking-wide mb-0.5">Rôle</label>
+                            <input type="text" value={det.role} onChange={e => updatePrestDetail(f.id, 'role', e.target.value)} placeholder="Media Buyer, Monteur…" className="w-full bg-obsidian-700 border border-card-border text-white text-[10px] rounded-lg py-1.5 px-2 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-primary-500/60" />
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-semibold text-slate-500 uppercase tracking-wide mb-0.5">TVA</label>
+                            <select value={det.tvaLabel} onChange={e => updatePrestDetail(f.id, 'tvaLabel', e.target.value)} className="w-full bg-obsidian-700 border border-card-border text-white text-[10px] rounded-lg py-1.5 px-1.5 focus:outline-none focus:ring-1 focus:ring-primary-500/60">
+                              <option value="TVA non applicable - art.293B">Art. 293B</option>
+                              <option value="TVA 5.5%">TVA 5.5%</option>
+                              <option value="TVA 10%">TVA 10%</option>
+                              <option value="TVA 20%">TVA 20%</option>
+                            </select>
+                          </div>
+                          <div className="col-span-2">
+                            <label className="block text-[9px] font-semibold text-slate-500 uppercase tracking-wide mb-0.5">Échéance / Conditions</label>
+                            <input type="text" value={det.echeance} onChange={e => updatePrestDetail(f.id, 'echeance', e.target.value)} placeholder="50% signature, 50% J+30" className="w-full bg-obsidian-700 border border-card-border text-white text-[10px] rounded-lg py-1.5 px-2 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-primary-500/60" />
+                          </div>
+                        </div>
+                        {/* Per-prestataire service lines */}
+                        <div className="pt-1 border-t border-primary-500/20 space-y-1">
+                          <label className="block text-[9px] font-semibold text-slate-500 uppercase tracking-wide">Prestations</label>
+                          {det.prestations.map(line => (
+                            <div key={line.id} className="flex items-center gap-1.5">
+                              <input type="text" value={line.description} onChange={e => updatePrestLine(f.id, line.id, 'description', e.target.value)} placeholder="Description prestation…" className="flex-1 bg-obsidian-700 border border-card-border text-white text-[10px] rounded-lg py-1 px-2 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-primary-500/60" />
+                              <div className="flex items-center gap-0.5 w-20">
+                                <input type="number" value={line.montant || ''} onChange={e => updatePrestLine(f.id, line.id, 'montant', Number(e.target.value))} placeholder="0" min={0} className="w-full bg-obsidian-700 border border-card-border text-white text-[10px] rounded-lg py-1 px-1.5 text-right placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-primary-500/60" />
+                                <span className="text-[9px] text-slate-500">€</span>
+                              </div>
+                              <button onClick={() => removePrestLine(f.id, line.id)} className="text-slate-600 hover:text-red-400 transition-colors flex-shrink-0"><X className="w-3 h-3" /></button>
+                            </div>
+                          ))}
+                          <button onClick={() => addPrestLine(f.id)} className="w-full text-[9px] font-semibold text-primary-400 border border-primary-500/30 border-dashed rounded-lg py-1 hover:bg-primary-500/10 transition-all">
+                            + Ajouter une prestation
+                          </button>
+                          {det.prestations.length > 0 && (
+                            <div className="flex justify-between text-[10px] pt-0.5">
+                              <span className="text-slate-500">Total HT</span>
+                              <span className="text-white font-bold">{det.montantHT.toLocaleString('fr-FR')} €</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
                           <div className="flex items-center gap-1 text-slate-400"><Hash className="w-3 h-3" /><span className="truncate">{f.siret || '—'}</span></div>
                           <div className="flex items-center gap-1 text-slate-400"><Mail className="w-3 h-3" /><span className="truncate">{f.email}</span></div>
-                          <div className="flex items-center gap-1 text-slate-400"><MapPin className="w-3 h-3" /><span className="truncate">{f.adresse || '—'}</span></div>
-                          <div className="flex items-center gap-1 text-slate-400"><Euro className="w-3 h-3" /><span>{f.tjm} €/j</span></div>
+                          {f.iban && <div className="flex items-center gap-1 text-slate-400 col-span-2 font-mono"><span className="truncate">IBAN: {f.iban.replace(/(.{4})/g, '$1 ').trim()}</span></div>}
                         </div>
                       </div>
-                    ))}
+                    );})}
                   </div>
                 ) : (
                   <p className="text-[11px] text-slate-500 text-center py-1">
@@ -1204,6 +1544,12 @@ export const Documents: React.FC = () => {
                         <div className="flex items-center gap-1 text-slate-400"><Euro className="w-3 h-3" /><span>{selectedFreelancer.tjm} €/j</span></div>
                       </div>
                       <p className="text-[10px] text-slate-500">TVA : {selectedFreelancer.numeroTVA || '—'}</p>
+                      {(selectedFreelancer.iban || selectedFreelancer.bic) && (
+                        <div className="border-t border-primary-500/20 pt-1.5 mt-1.5 space-y-0.5">
+                          {selectedFreelancer.iban && <p className="text-[10px] text-slate-500 font-mono">IBAN : {selectedFreelancer.iban.replace(/(.{4})/g, '$1 ').trim()}</p>}
+                          {selectedFreelancer.bic && <p className="text-[10px] text-slate-500 font-mono">BIC : {selectedFreelancer.bic}</p>}
+                        </div>
+                      )}
                     </div>
                   )}
                   {!selectedFreelancer && (
@@ -1282,18 +1628,41 @@ export const Documents: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Acompte */}
+                  {/* Échéance paiement */}
+                  {(docType === 'facture' || docType === 'devis') && (
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-400 mb-1 uppercase tracking-wide">Échéance paiement</label>
+                      <div className="flex gap-1.5">
+                        {[15, 30, 45, 60].map(j => (
+                          <button
+                            key={j}
+                            onClick={() => setF('echeanceJours')(j)}
+                            className={clsx(
+                              'flex-1 py-1.5 text-xs font-bold rounded-lg border transition-all',
+                              form.echeanceJours === j
+                                ? 'bg-accent-cyan/20 border-accent-cyan/40 text-accent-cyan'
+                                : 'bg-card border-card-border text-slate-500 hover:text-white'
+                            )}
+                          >
+                            {j}j
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Acompte rapide (rétrocompatibilité) */}
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-400 mb-1 uppercase tracking-wide">
                       Acompte <span className="text-slate-600 normal-case font-normal">(optionnel)</span>
                     </label>
                     <div className="flex gap-1.5">
-                      {[0, 30, 50].map(p => (
+                      {[0, 25, 30, 50].map(p => (
                         <button
                           key={p}
                           onClick={() => setF('acomptePercent')(p)}
                           className={clsx(
-                            'px-3 py-1.5 text-xs font-bold rounded-lg border transition-all',
+                            'px-2.5 py-1.5 text-xs font-bold rounded-lg border transition-all',
                             form.acomptePercent === p
                               ? 'bg-accent-cyan/20 border-accent-cyan/40 text-accent-cyan'
                               : 'bg-card border-card-border text-slate-500 hover:text-white'
@@ -1352,46 +1721,133 @@ export const Documents: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Acompte déjà versé */}
+                  {/* Multi-acomptes management */}
                   {totals.acompte > 0 && (
-                    <div className={clsx(
-                      'rounded-xl border p-3 space-y-2 transition-all',
-                      form.acompteDejaVerse
-                        ? 'bg-accent-green/10 border-accent-green/30'
-                        : 'bg-obsidian-700/40 border-card-border/60'
-                    )}>
-                      <label className="flex items-center gap-2.5 cursor-pointer">
-                        <div
-                          onClick={() => setForm(f => ({ ...f, acompteDejaVerse: !f.acompteDejaVerse }))}
-                          className={clsx(
-                            'w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all cursor-pointer',
-                            form.acompteDejaVerse
-                              ? 'bg-accent-green border-accent-green'
-                              : 'bg-transparent border-slate-500 hover:border-accent-green'
-                          )}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Suivi des acomptes</label>
+                        <button
+                          onClick={addAcompte}
+                          className="text-[10px] font-semibold text-accent-cyan hover:text-white transition-colors"
                         >
+                          + Ajouter
+                        </button>
+                      </div>
+
+                      {acomptes.length === 0 && (
+                        <div className={clsx(
+                          'rounded-xl border p-3 space-y-2 transition-all',
+                          form.acompteDejaVerse
+                            ? 'bg-accent-green/10 border-accent-green/30'
+                            : 'bg-obsidian-700/40 border-card-border/60'
+                        )}>
+                          <label className="flex items-center gap-2.5 cursor-pointer">
+                            <div
+                              onClick={() => setForm(f => ({ ...f, acompteDejaVerse: !f.acompteDejaVerse }))}
+                              className={clsx(
+                                'w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all cursor-pointer',
+                                form.acompteDejaVerse
+                                  ? 'bg-accent-green border-accent-green'
+                                  : 'bg-transparent border-slate-500 hover:border-accent-green'
+                              )}
+                            >
+                              {form.acompteDejaVerse && (
+                                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 10 8">
+                                  <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              )}
+                            </div>
+                            <span className={clsx('text-xs font-semibold', form.acompteDejaVerse ? 'text-accent-green' : 'text-slate-400')}>
+                              Acompte déjà versé ({totals.acompte.toLocaleString('fr-FR')} €)
+                            </span>
+                          </label>
                           {form.acompteDejaVerse && (
-                            <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 10 8">
-                              <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                            </svg>
+                            <div className="pl-6">
+                              <label className="block text-[10px] font-semibold text-slate-500 mb-1 uppercase tracking-wide">Date de versement</label>
+                              <input type="date" value={form.dateAcompte} onChange={e => setForm(f => ({ ...f, dateAcompte: e.target.value }))} className="w-full bg-obsidian-700 border border-card-border text-white text-xs rounded-lg py-1.5 px-2 focus:outline-none focus:ring-1 focus:ring-accent-green/60" />
+                            </div>
                           )}
                         </div>
-                        <span className={clsx('text-xs font-semibold', form.acompteDejaVerse ? 'text-accent-green' : 'text-slate-400')}>
-                          Acompte déjà versé ({totals.acompte.toLocaleString('fr-FR')} €)
-                        </span>
-                      </label>
-                      {form.acompteDejaVerse && (
-                        <div className="pl-6">
-                          <label className="block text-[10px] font-semibold text-slate-500 mb-1 uppercase tracking-wide">Date de versement</label>
-                          <input
-                            type="date"
-                            value={form.dateAcompte}
-                            onChange={e => setForm(f => ({ ...f, dateAcompte: e.target.value }))}
-                            className="w-full bg-obsidian-700 border border-card-border text-white text-xs rounded-lg py-1.5 px-2 focus:outline-none focus:ring-1 focus:ring-accent-green/60"
-                          />
-                          <p className="text-[10px] text-accent-green/70 mt-1">
-                            La facture de solde sera générée avec la mention "Acompte déjà perçu"
-                          </p>
+                      )}
+
+                      {/* Multi-acompte cards */}
+                      {acomptes.map((ac, idx) => (
+                        <div
+                          key={ac.id}
+                          className={clsx(
+                            'rounded-xl border p-2.5 space-y-2 transition-all',
+                            ac.statut === 'paye' ? 'bg-accent-green/10 border-accent-green/30'
+                              : ac.statut === 'annule' ? 'bg-slate-500/10 border-slate-500/30'
+                              : 'bg-amber-500/10 border-amber-500/30'
+                          )}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wide">
+                              Acompte {idx + 1}
+                            </span>
+                            <button onClick={() => removeAcompte(ac.id)} className="text-slate-500 hover:text-red-400 transition-colors">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-[9px] font-semibold text-slate-500 uppercase mb-0.5">Montant</label>
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  value={ac.montant || ''}
+                                  onChange={e => updateAcompte(ac.id, { montant: Number(e.target.value), pourcentage: totals.ttc > 0 ? Math.round(Number(e.target.value) / totals.ttc * 100) : 0 })}
+                                  min={0}
+                                  className="w-full bg-obsidian-700 border border-card-border text-white text-[10px] rounded-lg py-1 px-2 focus:outline-none focus:ring-1 focus:ring-primary-500/60"
+                                />
+                                <span className="text-[10px] text-slate-500">€</span>
+                              </div>
+                            </div>
+                            <div>
+                              <label className="block text-[9px] font-semibold text-slate-500 uppercase mb-0.5">Statut</label>
+                              <select
+                                value={ac.statut}
+                                onChange={e => updateAcompte(ac.id, {
+                                  statut: e.target.value as AcompteStatut,
+                                  ...(e.target.value === 'paye' && !ac.dateReglement ? { dateReglement: new Date().toISOString().split('T')[0] } : {}),
+                                })}
+                                className="w-full bg-obsidian-700 border border-card-border text-white text-[10px] rounded-lg py-1 px-2 focus:outline-none focus:ring-1 focus:ring-primary-500/60"
+                              >
+                                <option value="a_payer">A payer</option>
+                                <option value="paye">Payé</option>
+                                <option value="partiellement_paye">Partiel</option>
+                                <option value="annule">Annulé</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-[9px] font-semibold text-slate-500 uppercase mb-0.5">Date prévue</label>
+                              <input type="date" value={ac.datePrevue} onChange={e => updateAcompte(ac.id, { datePrevue: e.target.value })} className="w-full bg-obsidian-700 border border-card-border text-white text-[10px] rounded-lg py-1 px-2 focus:outline-none focus:ring-1 focus:ring-primary-500/60" />
+                            </div>
+                            {(ac.statut === 'paye' || ac.statut === 'partiellement_paye') && (
+                              <div>
+                                <label className="block text-[9px] font-semibold text-slate-500 uppercase mb-0.5">Date règlement</label>
+                                <input type="date" value={ac.dateReglement || ''} onChange={e => updateAcompte(ac.id, { dateReglement: e.target.value })} className="w-full bg-obsidian-700 border border-card-border text-white text-[10px] rounded-lg py-1 px-2 focus:outline-none focus:ring-1 focus:ring-accent-green/60" />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Acomptes summary */}
+                      {acomptes.length > 0 && (
+                        <div className="bg-obsidian-700/40 rounded-lg p-2 space-y-1 text-[10px]">
+                          <div className="flex justify-between text-slate-400">
+                            <span>Total acomptes prévus</span>
+                            <span className="text-amber-400 font-semibold">{totalAcomptesPrevu.toLocaleString('fr-FR')} €</span>
+                          </div>
+                          <div className="flex justify-between text-slate-400">
+                            <span>Déjà encaissé</span>
+                            <span className="text-accent-green font-semibold">{totalAcomptesPaye.toLocaleString('fr-FR')} €</span>
+                          </div>
+                          <div className="flex justify-between text-white font-bold border-t border-card-border/50 pt-1">
+                            <span>Reste à encaisser</span>
+                            <span>{(totals.ttc - totalAcomptesPaye).toLocaleString('fr-FR')} €</span>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1417,6 +1873,74 @@ export const Documents: React.FC = () => {
               />
               <p className="text-slate-600 text-[10px] mt-1">Ces informations apparaîtront dans la section remarques du document.</p>
             </div>
+          )}
+
+          {/* ── Section: SOW / Annexe 1 (contracts only) ─────────────── */}
+          {(docType === 'contrat' || docType === 'contrat_influenceur') && (
+            <>
+              <SectionHeader icon={BookOpen} title="Annexe 1 — SOW" open={secSOW} onToggle={() => setSecSOW(p => !p)} />
+              {secSOW && (
+                <div className="p-4 border-b border-card-border/50 space-y-2.5">
+                  <p className="text-[10px] text-slate-500">Statement of Work — champs injectés dans l'Annexe 1 du contrat.</p>
+                  <FieldInput label="Projet / Campagne" value={form.projetNom} onChange={setF('projetNom')} placeholder="Nom du projet ou de la campagne" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <FieldInput label="Client" value={form.clientNom ? `${form.clientNom}${form.clientEntreprise ? ` — ${form.clientEntreprise}` : ''}` : ''} onChange={() => {}} placeholder="Auto-rempli" className="opacity-60 pointer-events-none" />
+                    <FieldInput label="Référent Client" value={form.clientRepresentant} onChange={setF('clientRepresentant')} placeholder="Nom du contact client" />
+                  </div>
+                  <FieldInput label="Référent Prestataires / Coordination" value={form.referentNom} onChange={setF('referentNom')} placeholder="Chef de projet côté prestataires" />
+                  <div className="bg-obsidian-700/30 border border-card-border/40 rounded-lg p-2.5">
+                    <p className="text-[10px] text-amber-400 font-semibold mb-1">Périmètre par rôle</p>
+                    <p className="text-[10px] text-slate-500">Les missions, livrables et KPIs par prestataire sont éditables directement dans le template. Ajoutez les prestataires dans la section "Prestataire(s)" ci-dessus.</p>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── Section: Signature (contracts only) ────────────────────── */}
+          {(docType === 'contrat' || docType === 'contrat_influenceur') && (
+            <>
+              <SectionHeader icon={FileSignature} title="Signature" open={secSignature} onToggle={() => setSecSignature(p => !p)} />
+              {secSignature && (
+                <div className="p-4 border-b border-card-border/50 space-y-3">
+                  <FieldInput label="Fait à (lieu)" value={form.signLieu} onChange={setF('signLieu')} placeholder="Paris, Lyon, Marseille…" />
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-400 mb-2 uppercase tracking-wide">Signataires</label>
+                    <div className="space-y-2">
+                      {/* Auto-generated from client */}
+                      {form.clientNom && (
+                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5 space-y-1">
+                          <p className="text-[10px] font-bold text-amber-400 uppercase tracking-wide">Le Client</p>
+                          <p className="text-xs text-white">{form.clientRepresentant || form.clientNom}</p>
+                          <p className="text-[10px] text-slate-500">{form.clientEntreprise || '—'}</p>
+                        </div>
+                      )}
+                      {/* Auto-generated from freelancer(s) */}
+                      {(docType === 'contrat' || docType === 'contrat_influenceur') && selectedContractFreelancers.length > 0 ? (
+                        selectedContractFreelancers.map(f => (
+                          <div key={f.id} className="bg-primary-500/10 border border-primary-500/20 rounded-lg p-2.5 space-y-1">
+                            <p className="text-[10px] font-bold text-primary-400 uppercase tracking-wide">Prestataire</p>
+                            <p className="text-xs text-white">{f.prenom} {f.nom}</p>
+                            <p className="text-[10px] text-slate-500">{f.entreprise || f.specialite}</p>
+                          </div>
+                        ))
+                      ) : selectedFreelancer && (
+                        <div className="bg-primary-500/10 border border-primary-500/20 rounded-lg p-2.5 space-y-1">
+                          <p className="text-[10px] font-bold text-primary-400 uppercase tracking-wide">Le Prestataire</p>
+                          <p className="text-xs text-white">{selectedFreelancer.prenom} {selectedFreelancer.nom}</p>
+                          <p className="text-[10px] text-slate-500">{selectedFreelancer.entreprise || selectedFreelancer.specialite}</p>
+                        </div>
+                      )}
+                      {!form.clientNom && !selectedFreelancer && (
+                        <p className="text-[10px] text-slate-500 text-center py-1">
+                          Les signataires sont générés automatiquement à partir du client et du/des prestataire(s) sélectionnés.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           {/* Spacer */}

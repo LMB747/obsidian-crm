@@ -4,9 +4,10 @@ import clsx from 'clsx';
 
 interface LoginScreenProps {
   onLogin: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  onFirstSetup?: () => void;
 }
 
-export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
+export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onFirstSetup }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -160,7 +161,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
           </div>
 
           {/* Footer */}
-          <div className="px-8 py-4 bg-obsidian-900/50 border-t border-card-border text-center">
+          <div className="px-8 py-4 bg-obsidian-900/50 border-t border-card-border text-center space-y-2">
+            {onFirstSetup && (
+              <button
+                onClick={onFirstSetup}
+                className="text-primary-400 text-xs hover:text-primary-300 transition-colors underline underline-offset-2"
+              >
+                Configurer pour la première fois
+              </button>
+            )}
             <p className="text-slate-600 text-xs">v2.0 — Obsidian Agency CRM</p>
           </div>
         </div>

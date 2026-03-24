@@ -288,13 +288,31 @@ export async function getApifyResults(
 
   return (result.data as Record<string, unknown>[])
     .map(item => mapItemToProspect(item, platform))
-    .filter((p): p is ProspectContact => p !== null);
+    .filter((p): p is ProspectContact => p !== null)
+    .map(p => ({ ...p, score: computeProspectScore(p) }));
 }
 
 // ─── Mapper raw item → ProspectContact ────────────────────────────────────────
 
 function str(v: unknown): string {
   return v ? String(v).trim() : '';
+}
+
+// ─── Scoring dynamique ─────────────────────────────────────────────────────
+// Calcule un score 0-100 basé sur la complétude des données du prospect
+export function computeProspectScore(p: ProspectContact): number {
+  let score = 30; // base
+  if (p.email) score += 15;
+  if (p.telephone) score += 10;
+  if (p.linkedinUrl) score += 10;
+  if (p.website) score += 5;
+  if (p.secteur) score += 5;
+  if (p.ville) score += 5;
+  if (p.poste && p.poste !== 'Non renseigné') score += 5;
+  if (p.entreprise && p.entreprise !== p.nom) score += 5;
+  if (p.notes && p.notes.length > 20) score += 5;
+  if (p.followers && p.followers > 1000) score += 5;
+  return Math.min(100, score);
 }
 
 function mapItemToProspect(item: Record<string, unknown>, platform: ProspectSource): ProspectContact | null {
