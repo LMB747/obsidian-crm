@@ -394,6 +394,18 @@ export interface CRMStore {
   deleteUser: (id: string) => void;
   addAuditLog: (log: Omit<AuditLog, 'id'>) => void;
   completeSetup: (data: { agencyName: string; adminEmail: string; passwordHash: string }) => void;
+
+  // Actions — Personal Space
+  personalTasks: PersonalTask[];
+  personalNotes: PersonalNote[];
+  addPersonalTask: (task: Omit<PersonalTask, 'id' | 'dateCreation' | 'subtasks' | 'ordre'>) => void;
+  updatePersonalTask: (id: string, updates: Partial<PersonalTask>) => void;
+  deletePersonalTask: (id: string) => void;
+  reorderPersonalTasks: (orderedIds: string[]) => void;
+  addPersonalNote: (note: Omit<PersonalNote, 'id' | 'dateCreation' | 'dateModification' | 'ordre'>) => void;
+  updatePersonalNote: (id: string, updates: Partial<PersonalNote>) => void;
+  deletePersonalNote: (id: string) => void;
+  reorderPersonalNotes: (orderedIds: string[]) => void;
 }
 
 export interface Notification {
@@ -440,7 +452,45 @@ export type UserRole = 'admin' | 'freelancer' | 'viewer';
 export type SectionPermission =
   | 'dashboard' | 'clients' | 'freelancers' | 'projects'
   | 'worktracking' | 'invoices' | 'documents' | 'snooze'
-  | 'analytics' | 'settings' | 'admin';
+  | 'analytics' | 'settings' | 'admin' | 'personal';
+
+// ─── ESPACE PERSONNEL — Tâches & Notes ──────────────────────────────────────
+
+export type PersonalTaskStatut = 'todo' | 'in_progress' | 'done';
+export type PersonalTaskPriorite = 'basse' | 'normale' | 'haute' | 'urgente';
+
+export interface PersonalSubTask {
+  id: string;
+  titre: string;
+  done: boolean;
+}
+
+export interface PersonalTask {
+  id: string;
+  userId: string;
+  titre: string;
+  description: string;
+  statut: PersonalTaskStatut;
+  priorite: PersonalTaskPriorite;
+  dateEcheance?: string;
+  dateCreation: string;
+  tags: string[];
+  subtasks: PersonalSubTask[];
+  ordre: number;
+  rappel?: string;       // ISO date for reminder
+}
+
+export interface PersonalNote {
+  id: string;
+  userId: string;
+  titre: string;
+  contenu: string;
+  dateCreation: string;
+  dateModification: string;
+  couleur?: string;
+  epingle?: boolean;     // pinned note
+  ordre: number;
+}
 
 export interface UserAccount {
   id: string;

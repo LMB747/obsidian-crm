@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import { CRMStore, Client, Freelancer, Project, Invoice, SnoozeSubscription, Activity, Task, AgencySettings, TimerSession, UserAccount, AuditLog, TaskNote, ProjectActivity, Notification, Workspace, Invitation, Objective, ProjectSubCategory, UnifiedTag } from '../types';
+import { CRMStore, Client, Freelancer, Project, Invoice, SnoozeSubscription, Activity, Task, AgencySettings, TimerSession, UserAccount, AuditLog, TaskNote, ProjectActivity, Notification, Workspace, Invitation, Objective, ProjectSubCategory, UnifiedTag, PersonalTask, PersonalNote } from '../types';
 import { toast } from '../components/ui/Toast';
 import { verifyPassword } from '../utils/crypto';
 import {
@@ -58,6 +58,8 @@ export const useStore = create<CRMStore>()(
       auditLogs: [],
       currentUser: null,
       setupComplete: false,
+      personalTasks: [],
+      personalNotes: [],
 
       // ─── Tags unifiés ─────────────────────────────────────────────────────
       unifiedTags: [
@@ -594,9 +596,9 @@ export const useStore = create<CRMStore>()(
       // Sync API session user into Zustand currentUser
       syncSessionUser: ({ email, role, nom, prenom }: { email: string; role: string; nom: string; prenom: string }) => {
         const permissionsByRole: Record<string, string[]> = {
-          admin: ['dashboard','clients','freelancers','projects','worktracking','invoices','documents','snooze','analytics','settings','admin'],
-          freelancer: ['dashboard','projects','worktracking'],
-          viewer: ['dashboard'],
+          admin: ['dashboard','clients','freelancers','projects','worktracking','invoices','documents','snooze','analytics','settings','admin','personal'],
+          freelancer: ['dashboard','projects','worktracking','personal'],
+          viewer: ['dashboard','personal'],
         };
         const permissions = permissionsByRole[role] || permissionsByRole.viewer;
 
@@ -620,6 +622,44 @@ export const useStore = create<CRMStore>()(
           };
           set(state => ({ users: [...state.users, newUser], currentUser: newUser }));
         }
+      },
+
+      // ─── Personal Tasks & Notes ────────────────────────────────────────────
+      addPersonalTask: (task: any) => {
+        const maxOrdre = Math.max(0, ...get().personalTasks.map(t => t.ordre ?? 0));
+        set(state => ({ personalTasks: [{ ...task, id: uuidv4(), dateCreation: new Date().toISOString(), subtasks: task.subtasks || [], ordre: maxOrdre + 1 }, ...state.personalTasks] }));
+      },
+      updatePersonalTask: (id: string, updates: any) => {
+        set(state => ({ personalTasks: state.personalTasks.map(t => t.id === id ? { ...t, ...updates } : t) }));
+      },
+      deletePersonalTask: (id: string) => {
+        set(state => ({ personalTasks: state.personalTasks.filter(t => t.id !== id) }));
+      },
+      reorderPersonalTasks: (orderedIds: string[]) => {
+        set(state => ({
+          personalTasks: state.personalTasks.map(t => {
+            const idx = orderedIds.indexOf(t.id);
+            return idx >= 0 ? { ...t, ordre: idx } : t;
+          }),
+        }));
+      },
+      addPersonalNote: (note: any) => {
+        const maxOrdre = Math.max(0, ...get().personalNotes.map(n => n.ordre ?? 0));
+        set(state => ({ personalNotes: [{ ...note, id: uuidv4(), dateCreation: new Date().toISOString(), dateModification: new Date().toISOString(), ordre: maxOrdre + 1 }, ...state.personalNotes] }));
+      },
+      updatePersonalNote: (id: string, updates: any) => {
+        set(state => ({ personalNotes: state.personalNotes.map(n => n.id === id ? { ...n, ...updates, dateModification: new Date().toISOString() } : n) }));
+      },
+      deletePersonalNote: (id: string) => {
+        set(state => ({ personalNotes: state.personalNotes.filter(n => n.id !== id) }));
+      },
+      reorderPersonalNotes: (orderedIds: string[]) => {
+        set(state => ({
+          personalNotes: state.personalNotes.map(n => {
+            const idx = orderedIds.indexOf(n.id);
+            return idx >= 0 ? { ...n, ordre: idx } : n;
+          }),
+        }));
       },
 
       addUser: (userData) => {
@@ -829,6 +869,8 @@ export const useStore = create<CRMStore>()(
         auditLogs: state.auditLogs,
         currentUser: state.currentUser,
         setupComplete: state.setupComplete,
+        personalTasks: state.personalTasks,
+        personalNotes: state.personalNotes,
       }),
     }
   )

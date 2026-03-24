@@ -21,6 +21,7 @@ const Admin           = lazy(() => import('./pages/Admin').then(m => ({ default:
 const FreelancerPortal = lazy(() => import('./pages/FreelancerPortal').then(m => ({ default: m.FreelancerPortal })));
 const ProspectionCRM  = lazy(() => import('./pages/ProspectionCRM').then(m => ({ default: m.ProspectionCRM })));
 const CalendarPage    = lazy(() => import('./pages/Calendar').then(m => ({ default: m.Calendar })));
+const PersonalSpace   = lazy(() => import('./pages/PersonalSpace').then(m => ({ default: m.PersonalSpace })));
 const NotFound        = lazy(() => import('./pages/NotFound').then(m => ({ default: m.NotFound })));
 
 const pageMap: Record<string, React.ComponentType> = {
@@ -36,6 +37,7 @@ const pageMap: Record<string, React.ComponentType> = {
   'media-buying':      MediaBuying,
   prospection:         ProspectionCRM,
   calendar:            CalendarPage,
+  personal:            PersonalSpace,
   settings:            Settings,
   admin:               Admin,
   'freelancer-portal': FreelancerPortal,

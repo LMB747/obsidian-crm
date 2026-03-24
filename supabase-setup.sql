@@ -82,3 +82,52 @@ CREATE POLICY "Admins can insert profiles" ON profiles
 --    VITE_SUPABASE_URL = https://xxxx.supabase.co
 --    VITE_SUPABASE_KEY = eyJhb...
 -- ============================================================
+
+-- ============================================================
+-- 5. ESPACE PERSONNEL — Tâches & Notes
+-- ============================================================
+
+-- 5a. Personal Tasks
+CREATE TABLE IF NOT EXISTS personal_tasks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  titre TEXT NOT NULL,
+  description TEXT DEFAULT '',
+  statut TEXT DEFAULT 'todo' CHECK (statut IN ('todo', 'in_progress', 'done')),
+  priorite TEXT DEFAULT 'normale' CHECK (priorite IN ('basse', 'normale', 'haute', 'urgente')),
+  date_echeance DATE,
+  date_creation TIMESTAMPTZ DEFAULT now(),
+  tags TEXT[] DEFAULT '{}',
+  subtasks JSONB DEFAULT '[]',
+  ordre INTEGER DEFAULT 0,
+  rappel TIMESTAMPTZ
+);
+
+ALTER TABLE personal_tasks ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can CRUD own personal tasks" ON personal_tasks
+  FOR ALL USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+
+CREATE INDEX idx_personal_tasks_user ON personal_tasks(user_id);
+
+-- 5b. Personal Notes
+CREATE TABLE IF NOT EXISTS personal_notes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  titre TEXT NOT NULL,
+  contenu TEXT DEFAULT '',
+  couleur TEXT DEFAULT '#6366f1',
+  epingle BOOLEAN DEFAULT false,
+  ordre INTEGER DEFAULT 0,
+  date_creation TIMESTAMPTZ DEFAULT now(),
+  date_modification TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE personal_notes ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can CRUD own personal notes" ON personal_notes
+  FOR ALL USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+
+CREATE INDEX idx_personal_notes_user ON personal_notes(user_id);

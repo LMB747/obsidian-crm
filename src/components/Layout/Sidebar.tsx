@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, FolderKanban, FileText,
   Moon, Settings, ChevronLeft, ChevronRight,
   Zap, BarChart3, Bell, LogOut, Clock, FilePlus2, Briefcase,
-  Shield, Target, TrendingUp, ScanSearch, CalendarDays
+  Shield, Target, TrendingUp, ScanSearch, CalendarDays, BookOpen
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { SectionPermission } from '../../types';
@@ -22,6 +22,7 @@ const navItems: { id: string; label: string; icon: React.FC<{ className?: string
   { id: 'analytics',    label: 'Analytiques',    icon: BarChart3,       badge: null },
   { id: 'media-buying', label: 'Media Buying',   icon: TrendingUp,      badge: null },
   { id: 'prospection',  label: 'Prospection IA', icon: ScanSearch,      badge: 'IA' },
+  { id: 'personal',     label: 'Mon Espace',     icon: BookOpen,        badge: null },
 ];
 
 const ROLE_LABELS: Record<string, string> = {
