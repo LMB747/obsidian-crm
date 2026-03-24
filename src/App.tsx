@@ -45,10 +45,12 @@ const pageMap: Record<string, React.ComponentType> = {
 const App: React.FC = () => {
   const { activeSection, currentUser, login, setupComplete, completeSetup } = useStore();
   const setActiveSection = useStore((s) => s.setActiveSection);
-  // ── Auth: Supabase → API fallback → Local store ────────────────────────────
+  // ── ALL hooks MUST be before any early return ──────────────────────────────
   const [supabaseUser, setSupabaseUser] = useState<UserProfile | null>(null);
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(() => getSession());
   const [authLoading, setAuthLoading] = useState(isSupabaseConfigured());
+  // Setup JAMAIS affiché sauf URL exacte /#setup sur un navigateur non-configuré
+  const [showSetup, setShowSetup] = useState(() => window.location.hash === '#setup');
 
   // Check Supabase session on mount
   useEffect(() => {
@@ -126,23 +128,23 @@ const App: React.FC = () => {
     return () => window.removeEventListener('popstate', onPopState);
   }, [setActiveSection]);
 
+  // ── Rendering ──────────────────────────────────────────────────────────────
+
   // Attendre que l'auth soit prête
   if (authLoading) {
     return <PageSkeleton />;
   }
 
-  // Setup uniquement via URL #setup
-  const [showSetup, setShowSetup] = useState(() => window.location.hash === '#setup');
-
-  if (showSetup && !setupComplete) {
+  // Setup UNIQUEMENT si hash === #setup ET pas encore configuré localement
+  if (showSetup && !setupComplete && window.location.hash === '#setup') {
     return (
       <Suspense fallback={<PageSkeleton />}>
-        <FirstRunSetup onSetup={(data) => { completeSetup(data); setShowSetup(false); }} />
+        <FirstRunSetup onSetup={(data) => { completeSetup(data); setShowSetup(false); window.location.hash = ''; }} />
       </Suspense>
     );
   }
 
-  // Si pas connecté → login
+  // TOUJOURS login par défaut — jamais de setup wizard
   if (!isLoggedIn) {
     return <LoginScreen onLogin={handleLogin} />;
   }

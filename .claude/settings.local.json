@@ -35,7 +35,8 @@
       "mcp__plugin_context7_context7__query-docs",
       "Bash(python guide_prospection_ia.py)",
       "Bash(ls -la \"/c/Users/benig/Desktop/Obsidian/\"*.html)",
-      "Bash(npx vercel:*)"
+      "Bash(npx vercel:*)",
+      "WebFetch(domain:obsidian-agency-crm.vercel.app)"
     ]
   }
 }

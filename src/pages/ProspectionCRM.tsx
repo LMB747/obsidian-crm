@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { ProspectContact, ScrapeJob, ProspectionFilter, ProspectSource, ProspectStatus, PipelineColumn } from '../types/prospection';
 import { useProspectionStore, type ScrapingEngine } from '../store/useProspectionStore';
-import { setCustomActorId, getCustomActorId } from '../lib/apifyService';
+import { setCustomActorId, getCustomActorId, computeProspectScore } from '../lib/apifyService';
 import { fetchPhantomAgents, type PhantomAgent } from '../lib/phantombusterService';
 
 // ─── Platform config ──────────────────────────────────────────────────────────
@@ -844,10 +844,15 @@ const TabProspects: React.FC = () => {
   const activeFilterCount = filters.sources.length + filters.status.length + filters.intentionAchat.length;
 
   const handleEnrich = (id: string) => {
+    const p = prospects.find(pr => pr.id === id);
+    if (!p) return;
+    // Heuristic enrichment based on existing data
+    const score = computeProspectScore(p);
+    const intention: 'faible' | 'moyenne' | 'forte' = score >= 70 ? 'forte' : score >= 45 ? 'moyenne' : 'faible';
     updateProspect(id, {
       status: 'enriched',
       dateEnrichi: new Date().toISOString().split('T')[0],
-      intentionAchat: (['faible', 'moyenne', 'forte'] as const)[Math.floor(Math.random() * 3)],
+      intentionAchat: intention,
     });
   };
 
