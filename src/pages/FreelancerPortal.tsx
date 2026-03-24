@@ -4,7 +4,7 @@ import {
   AlertCircle, Calendar, TrendingUp, Briefcase,
   ChevronRight, ListTodo, MessageSquare, Send, ChevronDown, ChevronUp, X,
   Crosshair, FileText, Euro, Timer, Link, Play, Pause, MessageCircle,
-  Plus, Receipt
+  Plus, Receipt, Package
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useStore } from '../store/useStore';
@@ -572,6 +572,81 @@ export const FreelancerPortal: React.FC = () => {
                 </div>
                 <div className="flex-1 h-px bg-card-border" />
                 <span className="text-slate-500 text-xs flex-shrink-0">{tasks.length} tâche{tasks.length > 1 ? 's' : ''}</span>
+              </div>
+
+              {/* Project overview card */}
+              <div className="bg-card border border-card-border rounded-xl p-5 mb-4">
+                {/* Progression */}
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-slate-400">Progression</span>
+                  <span className="text-xs font-bold text-primary-300">{project.progression}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-obsidian-900 overflow-hidden mb-4">
+                  <div className="h-full rounded-full bg-gradient-to-r from-accent-cyan to-primary-500 transition-all" style={{ width: `${project.progression}%` }} />
+                </div>
+
+                {/* Stats row */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                  <div className="bg-obsidian-700/50 rounded-lg p-2.5">
+                    <p className="text-[10px] text-slate-500 mb-0.5">Budget</p>
+                    <p className="text-sm font-bold text-white">{project.budget.toLocaleString('fr-FR')} €</p>
+                  </div>
+                  <div className="bg-obsidian-700/50 rounded-lg p-2.5">
+                    <p className="text-[10px] text-slate-500 mb-0.5">Dépensé</p>
+                    <p className="text-sm font-bold text-white">{project.depenses.toLocaleString('fr-FR')} €</p>
+                  </div>
+                  <div className="bg-obsidian-700/50 rounded-lg p-2.5">
+                    <p className="text-[10px] text-slate-500 mb-0.5">Période</p>
+                    <p className="text-xs font-medium text-white">{project.dateDebut?.slice(5)} → {project.dateFin?.slice(5)}</p>
+                  </div>
+                  <div className="bg-obsidian-700/50 rounded-lg p-2.5">
+                    <p className="text-[10px] text-slate-500 mb-0.5">Équipe</p>
+                    <p className="text-sm font-bold text-white">{project.freelancerIds?.length || 0} membre{(project.freelancerIds?.length || 0) > 1 ? 's' : ''}</p>
+                  </div>
+                </div>
+
+                {/* Milestones */}
+                {project.milestones?.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mb-2">Jalons</p>
+                    <div className="flex flex-wrap gap-2">
+                      {project.milestones.map(m => (
+                        <span key={m.id} className={clsx(
+                          'flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium',
+                          m.complete ? 'bg-emerald-500/15 text-emerald-400' : 'bg-obsidian-700 text-slate-400 border border-card-border'
+                        )}>
+                          {m.complete ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                          {m.titre}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Livrables */}
+                {(project.livrables || []).length > 0 && (
+                  <div>
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mb-2">Livrables</p>
+                    <div className="space-y-1.5">
+                      {(project.livrables || []).map(l => (
+                        <div key={l.id} className="flex items-center gap-2 p-2 rounded-lg bg-obsidian-700/30">
+                          <Package className="w-3.5 h-3.5 text-primary-400 flex-shrink-0" />
+                          <span className="text-xs text-white flex-1 truncate">{l.titre}</span>
+                          <span className="text-[10px] text-slate-500">{l.type} • {l.plateforme}</span>
+                          <span className={clsx(
+                            'px-1.5 py-0.5 rounded text-[9px] font-semibold',
+                            l.statut === 'validé' || l.statut === 'publié' ? 'bg-emerald-500/20 text-emerald-300' :
+                            l.statut === 'en revue' ? 'bg-amber-500/20 text-amber-300' :
+                            l.statut === 'en production' ? 'bg-blue-500/20 text-blue-300' :
+                            'bg-slate-500/20 text-slate-400'
+                          )}>
+                            {l.statut}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Task grid */}
