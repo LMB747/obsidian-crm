@@ -6,6 +6,7 @@ import { ToastContainer } from '../ui/Toast';
 import { CommandPalette } from '../ui/CommandPalette';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { useAutoNotifications } from '../../hooks/useAutoNotifications';
+import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -26,6 +27,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   });
 
   useAutoNotifications();
+  useRealtimeSync();
 
   return (
     <div className="flex h-screen bg-obsidian-900 overflow-hidden">

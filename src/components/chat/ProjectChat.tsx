@@ -47,12 +47,14 @@ export const ProjectChat: React.FC<ProjectChatProps> = ({ projectId, projectNom 
     setLoading(false);
   }, [projectId]);
 
-  // Subscribe to realtime
+  // Subscribe to realtime + fallback polling
   useEffect(() => {
     fetchMessages();
     if (!isSupabaseConfigured()) return;
     const supabase = getSupabase();
     if (!supabase) return;
+
+    let realtimeActive = false;
 
     const channel = supabase
       .channel(`project-chat-${projectId}`)
@@ -62,11 +64,27 @@ export const ProjectChat: React.FC<ProjectChatProps> = ({ projectId, projectNom 
         table: 'project_messages',
         filter: `project_id=eq.${projectId}`,
       }, (payload) => {
-        setMessages(prev => [...prev, payload.new as ChatMessage]);
+        realtimeActive = true;
+        const newMsg = payload.new as ChatMessage;
+        setMessages(prev => {
+          // Éviter les doublons
+          if (prev.some(m => m.id === newMsg.id)) return prev;
+          return [...prev, newMsg];
+        });
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    // Fallback: polling toutes les 5s si Realtime ne fonctionne pas
+    const pollInterval = setInterval(() => {
+      if (!realtimeActive) {
+        fetchMessages();
+      }
+    }, 5000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(pollInterval);
+    };
   }, [projectId, fetchMessages]);
 
   // Auto-scroll
