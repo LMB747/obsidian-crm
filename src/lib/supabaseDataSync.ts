@@ -26,25 +26,19 @@ async function getSupabase() {
 
 // ─── Generic CRUD helpers ─────────────────────────────────────────────────
 
-async function syncItems(table: string, items: Array<{ id: string; [key: string]: any }>) {
+async function syncItems(table: string, items: Array<{ id: string; [key: string]: any }>, deletedIds?: Set<string>) {
   const supabase = await getSupabase();
   if (!supabase) return;
 
-  // 1. Charger les IDs existants dans Supabase
-  const { data: existing } = await supabase.from(table).select('id');
-  const remoteIds = new Set<string>((existing || []).map((r: any) => r.id as string));
-  const localIds = new Set<string>(items.map(i => i.id));
+  // Filtrer : ne PAS re-upserter les items qui ont été supprimés par un autre utilisateur
+  const safeItems = deletedIds && deletedIds.size > 0
+    ? items.filter(item => !deletedIds.has(item.id))
+    : items;
 
-  // 2. Supprimer les éléments qui n'existent plus localement
-  const toDelete: string[] = [...remoteIds].filter(id => !localIds.has(id));
-  if (toDelete.length > 0) {
-    await supabase.from(table).delete().in('id', toDelete);
-  }
+  // Upsert les éléments locaux (pas de diff-delete — les suppressions passent par deleteItem + crm_deletions)
+  if (safeItems.length === 0) return;
 
-  // 3. Upsert les éléments locaux
-  if (items.length === 0) return;
-
-  const rows = items.map(item => ({
+  const rows = safeItems.map(item => ({
     id: item.id,
     data: item,
     updated_at: new Date().toISOString(),
@@ -72,7 +66,30 @@ async function loadItems<T>(table: string): Promise<T[]> {
 async function deleteItem(table: string, id: string) {
   const supabase = await getSupabase();
   if (!supabase) return;
-  await supabase.from(table).delete().eq('id', id);
+  // Supprimer l'item ET logger la suppression pour propagation cross-browser
+  await Promise.all([
+    supabase.from(table).delete().eq('id', id),
+    supabase.from('crm_deletions').upsert({ id, table_name: table, deleted_at: new Date().toISOString() }, { onConflict: 'id,table_name' }),
+  ]);
+}
+
+/** Récupérer les IDs supprimés récemment (dernières 24h) */
+async function getRecentDeletions(): Promise<Map<string, Set<string>>> {
+  const supabase = await getSupabase();
+  if (!supabase) return new Map();
+
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data } = await supabase
+    .from('crm_deletions')
+    .select('id, table_name')
+    .gte('deleted_at', cutoff);
+
+  const map = new Map<string, Set<string>>();
+  (data || []).forEach((row: any) => {
+    if (!map.has(row.table_name)) map.set(row.table_name, new Set());
+    map.get(row.table_name)!.add(row.id);
+  });
+  return map;
 }
 
 async function upsertSingleton(table: string, id: string, data: any) {
@@ -129,7 +146,8 @@ export async function loadAllFromSupabase(): Promise<CRMData | null> {
   if (!isSupabaseConfigured()) return null;
 
   try {
-    const [clients, freelancers, projects, invoices, devis, snoozeSubscriptions, settings, unifiedTags, projectTemplates, clientPortalAccesses, emailSequences, sequenceEnrollments] = await Promise.all([
+    // Charger données ET suppressions en parallèle
+    const [clients, freelancers, projects, invoices, devis, snoozeSubscriptions, settings, unifiedTags, projectTemplates, clientPortalAccesses, emailSequences, sequenceEnrollments, deletions] = await Promise.all([
       loadItems('crm_clients'),
       loadItems('crm_freelancers'),
       loadItems('crm_projects'),
@@ -142,25 +160,38 @@ export async function loadAllFromSupabase(): Promise<CRMData | null> {
       loadItems('crm_portal_accesses'),
       loadItems('crm_email_sequences'),
       loadItems('crm_sequence_enrollments'),
+      getRecentDeletions(),
     ]);
 
+    // Filtrer les items qui sont dans le log de suppressions
+    const filterDel = (arr: any[], table: string) => {
+      const deleted = deletions.get(table);
+      if (!deleted || deleted.size === 0) return arr;
+      return arr.filter((item: any) => !deleted.has(item.id));
+    };
+
+    const safeClients = filterDel(clients, 'crm_clients');
+    const safeFreelancers = filterDel(freelancers, 'crm_freelancers');
+    const safeProjects = filterDel(projects, 'crm_projects');
+    const safeInvoices = filterDel(invoices, 'crm_invoices');
+
     // Only return if we actually have data in Supabase
-    const hasData = clients.length > 0 || projects.length > 0 || freelancers.length > 0 || invoices.length > 0;
+    const hasData = safeClients.length > 0 || safeProjects.length > 0 || safeFreelancers.length > 0 || safeInvoices.length > 0;
     if (!hasData) return null;
 
     return {
-      clients,
-      freelancers,
-      projects,
-      invoices,
-      devis,
-      snoozeSubscriptions,
+      clients: safeClients,
+      freelancers: safeFreelancers,
+      projects: safeProjects,
+      invoices: safeInvoices,
+      devis: filterDel(devis, 'crm_devis'),
+      snoozeSubscriptions: filterDel(snoozeSubscriptions, 'crm_snooze'),
       settings,
-      unifiedTags,
-      projectTemplates,
-      clientPortalAccesses,
-      emailSequences,
-      sequenceEnrollments,
+      unifiedTags: filterDel(unifiedTags, 'crm_tags'),
+      projectTemplates: filterDel(projectTemplates, 'crm_templates'),
+      clientPortalAccesses: filterDel(clientPortalAccesses, 'crm_portal_accesses'),
+      emailSequences: filterDel(emailSequences, 'crm_email_sequences'),
+      sequenceEnrollments: filterDel(sequenceEnrollments, 'crm_sequence_enrollments'),
     };
   } catch (err) {
     console.error('[DataSync] Load failed:', err);
@@ -173,19 +204,22 @@ export async function saveAllToSupabase(data: CRMData): Promise<void> {
   if (!isSupabaseConfigured()) return;
 
   try {
+    // Charger les suppressions récentes pour ne pas re-créer des items supprimés par un autre user
+    const deletions = await getRecentDeletions();
+
     await Promise.all([
-      syncItems('crm_clients', data.clients),
-      syncItems('crm_freelancers', data.freelancers),
-      syncItems('crm_projects', data.projects),
-      syncItems('crm_invoices', data.invoices),
-      syncItems('crm_devis', data.devis),
-      syncItems('crm_snooze', data.snoozeSubscriptions),
+      syncItems('crm_clients', data.clients, deletions.get('crm_clients')),
+      syncItems('crm_freelancers', data.freelancers, deletions.get('crm_freelancers')),
+      syncItems('crm_projects', data.projects, deletions.get('crm_projects')),
+      syncItems('crm_invoices', data.invoices, deletions.get('crm_invoices')),
+      syncItems('crm_devis', data.devis, deletions.get('crm_devis')),
+      syncItems('crm_snooze', data.snoozeSubscriptions, deletions.get('crm_snooze')),
       data.settings ? upsertSingleton('crm_settings', 'global', stripSensitiveSettings(data.settings)) : Promise.resolve(),
-      syncItems('crm_tags', data.unifiedTags),
-      syncItems('crm_templates', data.projectTemplates),
-      syncItems('crm_portal_accesses', data.clientPortalAccesses),
-      syncItems('crm_email_sequences', data.emailSequences),
-      syncItems('crm_sequence_enrollments', data.sequenceEnrollments),
+      syncItems('crm_tags', data.unifiedTags, deletions.get('crm_tags')),
+      syncItems('crm_templates', data.projectTemplates, deletions.get('crm_templates')),
+      syncItems('crm_portal_accesses', data.clientPortalAccesses, deletions.get('crm_portal_accesses')),
+      syncItems('crm_email_sequences', data.emailSequences, deletions.get('crm_email_sequences')),
+      syncItems('crm_sequence_enrollments', data.sequenceEnrollments, deletions.get('crm_sequence_enrollments')),
     ]);
   } catch (err) {
     console.error('[DataSync] Save failed:', err);
