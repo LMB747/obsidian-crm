@@ -40,46 +40,370 @@ const ACTION_COLORS: Record<SequenceStepAction, string> = {
   tache: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
 };
 
+// ─── Variables disponibles ────────────────────────────────────────────────────
+// {{prenom}} — Prénom du contact
+// {{nom}} — Nom du contact
+// {{entreprise}} — Nom de l'entreprise
+// {{poste}} — Poste du contact
+// {{agence}} — Nom de votre agence (Obsidian Agency)
+// {{signature}} — Votre signature
+
 const PRESET_SEQUENCES: Omit<EmailSequence, 'id' | 'dateCreation'>[] = [
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 1. ONBOARDING NOUVEAU CLIENT
+  // ═══════════════════════════════════════════════════════════════════════════
   {
     nom: 'Onboarding Nouveau Client',
     type: 'onboarding',
-    description: "Séquence d'accueil pour les nouveaux clients",
+    description: "Séquence d'accueil en 5 étapes pour fidéliser dès le premier jour",
     isActive: true,
     steps: [
-      { id: uuidv4(), ordre: 0, action: 'email', delaiJours: 0, sujet: 'Bienvenue chez Obsidian Agency !', contenu: 'Merci de nous faire confiance...' },
+      {
+        id: uuidv4(), ordre: 0, action: 'email', delaiJours: 0,
+        sujet: 'Bienvenue chez {{agence}} — On démarre ensemble !',
+        contenu: `Bonjour {{prenom}},
+
+Toute l'équipe d'{{agence}} est ravie de vous compter parmi nos clients.
+
+Voici ce qui va se passer dans les prochains jours :
+1. Kick-off meeting pour cadrer votre projet
+2. Accès à votre espace client dédié
+3. Présentation de votre chef de projet
+
+En attendant, n'hésitez pas à répondre à cet email si vous avez la moindre question.
+
+À très vite,
+{{signature}}`,
+      },
       { id: uuidv4(), ordre: 1, action: 'attente', delaiJours: 2 },
-      { id: uuidv4(), ordre: 2, action: 'email', delaiJours: 0, sujet: 'Votre projet — prochaines étapes', contenu: 'Voici ce qui vous attend...' },
-      { id: uuidv4(), ordre: 3, action: 'tache', delaiJours: 5, tacheDescription: 'Appeler le client pour premier point' },
-      { id: uuidv4(), ordre: 4, action: 'email', delaiJours: 7, sujet: 'Comment se passe le début ?', contenu: 'Un petit check-in...' },
+      {
+        id: uuidv4(), ordre: 2, action: 'email', delaiJours: 0,
+        sujet: 'Votre projet — les prochaines étapes concrètes',
+        contenu: `Bonjour {{prenom}},
+
+Suite à notre premier échange, voici un récapitulatif de ce qui est prévu :
+
+Planning prévisionnel :
+- Semaine 1 : Audit & brief créatif
+- Semaine 2-3 : Maquettes & propositions
+- Semaine 4 : Livraison v1 + itérations
+
+Vous pouvez suivre l'avancement en temps réel depuis votre espace client.
+
+Si certains points méritent d'être ajustés, dites-le-nous maintenant — c'est le bon moment.
+
+Cordialement,
+{{signature}}`,
+      },
+      { id: uuidv4(), ordre: 3, action: 'tache', delaiJours: 5, tacheDescription: 'Appeler {{prenom}} {{nom}} pour premier point de suivi (15 min)' },
+      {
+        id: uuidv4(), ordre: 4, action: 'email', delaiJours: 7,
+        sujet: 'Comment se passent les premiers jours ?',
+        contenu: `Bonjour {{prenom}},
+
+Cela fait maintenant une semaine que nous travaillons ensemble. Je voulais m'assurer que tout se passe bien de votre côté.
+
+Quelques questions rapides :
+- Les livrables correspondent-ils à vos attentes ?
+- La communication avec l'équipe est-elle fluide ?
+- Y a-t-il des ajustements à faire ?
+
+Votre satisfaction est notre priorité. N'hésitez pas à être transparent — on est là pour ça.
+
+Belle journée,
+{{signature}}`,
+      },
     ],
   },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 2. RELANCE LEAD FROID
+  // ═══════════════════════════════════════════════════════════════════════════
   {
     nom: 'Relance Lead Froid',
     type: 'relance_lead',
-    description: "Réactiver les leads qui n'ont pas répondu",
+    description: "Séquence de réactivation en 6 étapes pour les leads sans réponse",
     isActive: true,
     steps: [
-      { id: uuidv4(), ordre: 0, action: 'email', delaiJours: 0, sujet: 'Suite à notre échange', contenu: 'Je me permets de revenir vers vous...' },
+      {
+        id: uuidv4(), ordre: 0, action: 'email', delaiJours: 0,
+        sujet: '{{prenom}}, suite à notre échange',
+        contenu: `Bonjour {{prenom}},
+
+Je me permets de revenir vers vous suite à notre conversation.
+
+Je sais que le timing n'est pas toujours idéal, mais je voulais m'assurer que vous aviez bien reçu notre proposition.
+
+Seriez-vous disponible pour un call de 15 minutes cette semaine ? Je pourrai répondre à toutes vos questions.
+
+Bien cordialement,
+{{signature}}`,
+      },
       { id: uuidv4(), ordre: 1, action: 'attente', delaiJours: 3 },
       { id: uuidv4(), ordre: 2, action: 'condition', delaiJours: 0, condition: 'pas_de_reponse' },
-      { id: uuidv4(), ordre: 3, action: 'email', delaiJours: 0, sujet: 'Dernière relance', contenu: 'Je ne veux pas être insistant...' },
+      {
+        id: uuidv4(), ordre: 3, action: 'email', delaiJours: 0,
+        sujet: 'Une question rapide, {{prenom}}',
+        contenu: `Bonjour {{prenom}},
+
+Je ne veux surtout pas être insistant — je comprends que vous avez un emploi du temps chargé.
+
+Je me demandais simplement si :
+- Le projet est toujours d'actualité ?
+- Vous avez besoin d'informations complémentaires ?
+- Le budget ou le timing posent question ?
+
+Un simple "oui" ou "non" me suffit pour savoir si je dois continuer à vous tenir informé(e).
+
+Merci pour votre temps,
+{{signature}}`,
+      },
       { id: uuidv4(), ordre: 4, action: 'attente', delaiJours: 7 },
-      { id: uuidv4(), ordre: 5, action: 'tache', delaiJours: 0, tacheDescription: 'Appel de dernière chance' },
+      { id: uuidv4(), ordre: 5, action: 'tache', delaiJours: 0, tacheDescription: 'Appel de dernière chance à {{prenom}} {{nom}} — Si pas de réponse, classer comme perdu' },
     ],
   },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 3. NURTURING PROSPECT
+  // ═══════════════════════════════════════════════════════════════════════════
   {
     nom: 'Nurturing Prospect',
     type: 'nurturing',
-    description: 'Maintenir le contact avec les prospects',
+    description: 'Séquence de contenu en 6 étapes pour garder le contact sur 2 mois',
     isActive: true,
     steps: [
-      { id: uuidv4(), ordre: 0, action: 'email', delaiJours: 0, sujet: 'Une ressource qui pourrait vous intéresser', contenu: 'Nous avons publié...' },
+      {
+        id: uuidv4(), ordre: 0, action: 'email', delaiJours: 0,
+        sujet: '{{prenom}}, une ressource qui pourrait vous intéresser',
+        contenu: `Bonjour {{prenom}},
+
+En travaillant avec des entreprises comme {{entreprise}}, on a identifié un défi récurrent : comment maximiser son ROI digital sans exploser son budget.
+
+On a compilé nos meilleurs conseils dans un guide pratique. Je vous l'envoie en pièce jointe — c'est gratuit et sans engagement.
+
+Si le sujet vous parle, je serais ravi(e) d'en discuter autour d'un café virtuel.
+
+Bonne lecture,
+{{signature}}`,
+      },
       { id: uuidv4(), ordre: 1, action: 'attente', delaiJours: 14 },
-      { id: uuidv4(), ordre: 2, action: 'email', delaiJours: 0, sujet: 'Étude de cas: comment [Client] a réussi', contenu: 'Découvrez comment...' },
+      {
+        id: uuidv4(), ordre: 2, action: 'email', delaiJours: 0,
+        sujet: 'Comment une entreprise similaire a doublé ses résultats',
+        contenu: `Bonjour {{prenom}},
+
+Je voulais partager avec vous une success story qui pourrait vous inspirer.
+
+Un de nos clients dans un secteur proche du vôtre faisait face aux mêmes défis. En 6 mois, voici ce qu'on a accompli ensemble :
+- +127% de trafic qualifié
+- -34% de coût d'acquisition
+- x2.3 sur le ROI publicitaire
+
+Ce qui a fait la différence ? Une approche data-driven et un accompagnement sur-mesure.
+
+Si vous voulez en savoir plus sur la méthode, je suis disponible.
+
+Cordialement,
+{{signature}}`,
+      },
       { id: uuidv4(), ordre: 3, action: 'attente', delaiJours: 14 },
-      { id: uuidv4(), ordre: 4, action: 'email', delaiJours: 0, sujet: 'Invitation: webinaire exclusif', contenu: 'Nous organisons...' },
-      { id: uuidv4(), ordre: 5, action: 'tache', delaiJours: 30, tacheDescription: 'Évaluer la maturité du prospect' },
+      {
+        id: uuidv4(), ordre: 4, action: 'email', delaiJours: 0,
+        sujet: 'Invitation exclusive : atelier stratégie digitale',
+        contenu: `Bonjour {{prenom}},
+
+Nous organisons un atelier en ligne réservé aux décideurs comme vous :
+
+"Comment construire une stratégie digitale rentable en 2026"
+
+Au programme :
+- Les 3 erreurs qui coûtent le plus cher aux PME
+- Le framework qu'on utilise avec nos clients
+- Session Q&A en direct
+
+Places limitées à 15 participants pour garantir la qualité des échanges.
+
+Intéressé(e) ? Répondez simplement "oui" et je vous envoie le lien d'inscription.
+
+À bientôt,
+{{signature}}`,
+      },
+      { id: uuidv4(), ordre: 5, action: 'tache', delaiJours: 30, tacheDescription: 'Évaluer la maturité de {{prenom}} {{nom}} ({{entreprise}}) — Passer en lead chaud si engagement détecté' },
+    ],
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 4. RÉACTIVATION CLIENT INACTIF
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    nom: 'Réactivation Client Inactif',
+    type: 'reactivation',
+    description: 'Séquence en 5 étapes pour réengager les clients silencieux depuis 3+ mois',
+    isActive: true,
+    steps: [
+      {
+        id: uuidv4(), ordre: 0, action: 'email', delaiJours: 0,
+        sujet: '{{prenom}}, ça fait un moment !',
+        contenu: `Bonjour {{prenom}},
+
+Cela fait quelque temps que nous n'avons pas échangé, et je voulais prendre de vos nouvelles.
+
+Comment se porte {{entreprise}} ? Avez-vous de nouveaux projets en tête pour les prochains mois ?
+
+De notre côté, on a pas mal évolué — nouvelles expertises, nouveaux outils, nouvelles références. Je serais ravi(e) de vous montrer ce qu'on peut apporter de plus aujourd'hui.
+
+Un rapide échange de 10 minutes, ça vous dit ?
+
+Au plaisir,
+{{signature}}`,
+      },
+      { id: uuidv4(), ordre: 1, action: 'attente', delaiJours: 5 },
+      {
+        id: uuidv4(), ordre: 2, action: 'email', delaiJours: 0,
+        sujet: 'Une offre spéciale pour nos anciens clients',
+        contenu: `Bonjour {{prenom}},
+
+Comme vous faites partie de nos clients historiques, je voulais vous proposer quelque chose d'exclusif.
+
+Offre réservée à nos anciens clients :
+-20% sur votre prochain projet si vous confirmez avant la fin du mois.
+
+Pas de pression — c'est simplement notre façon de vous remercier pour la confiance passée et de vous donner une raison de revenir.
+
+Intéressé(e) ? Répondez à cet email et on planifie un call.
+
+Cordialement,
+{{signature}}`,
+      },
+      { id: uuidv4(), ordre: 3, action: 'attente', delaiJours: 7 },
+      {
+        id: uuidv4(), ordre: 4, action: 'email', delaiJours: 0,
+        sujet: 'Dernier message — on reste disponibles',
+        contenu: `Bonjour {{prenom}},
+
+C'est mon dernier message de la série — promis, pas de spam.
+
+Si le timing n'est pas bon, je comprends parfaitement. Sachez simplement que notre porte reste ouverte. Le jour où {{entreprise}} aura besoin d'un partenaire digital, on sera là.
+
+Je vous souhaite une excellente continuation.
+
+Bien à vous,
+{{signature}}`,
+      },
+    ],
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 5. PROSPECTION À FROID
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    nom: 'Prospection à Froid',
+    type: 'custom',
+    description: 'Séquence de cold outreach en 7 étapes pour des prospects jamais contactés',
+    isActive: true,
+    steps: [
+      {
+        id: uuidv4(), ordre: 0, action: 'email', delaiJours: 0,
+        sujet: '{{prenom}}, une idée pour {{entreprise}}',
+        contenu: `Bonjour {{prenom}},
+
+Je m'appelle [Votre prénom] et je dirige {{agence}}, une agence spécialisée dans la croissance digitale.
+
+En analysant {{entreprise}}, j'ai remarqué quelques opportunités que vous n'exploitez peut-être pas encore :
+- [Point 1 personnalisé selon le prospect]
+- [Point 2 personnalisé]
+
+On a aidé des entreprises similaires à obtenir des résultats concrets. Pas de bla-bla — des chiffres.
+
+Est-ce que 15 minutes dans votre agenda cette semaine seraient envisageables ?
+
+Cordialement,
+{{signature}}`,
+      },
+      { id: uuidv4(), ordre: 1, action: 'attente', delaiJours: 3 },
+      {
+        id: uuidv4(), ordre: 2, action: 'email', delaiJours: 0,
+        sujet: 'Re: une idée pour {{entreprise}}',
+        contenu: `{{prenom}},
+
+Suite à mon précédent message — je voulais ajouter un élément concret.
+
+Nous avons récemment accompagné une entreprise de votre secteur. Résultat en 90 jours :
+- Trafic qualifié : +85%
+- Coût par lead : -40%
+- Chiffre d'affaires attribuable : +60K€
+
+Si ces chiffres vous parlent, je peux vous expliquer comment en 15 minutes chrono.
+
+{{signature}}`,
+      },
+      { id: uuidv4(), ordre: 3, action: 'attente', delaiJours: 4 },
+      { id: uuidv4(), ordre: 4, action: 'condition', delaiJours: 0, condition: 'pas_de_reponse' },
+      {
+        id: uuidv4(), ordre: 5, action: 'email', delaiJours: 0,
+        sujet: 'Pas le bon moment ? Pas de souci',
+        contenu: `Bonjour {{prenom}},
+
+Je comprends que vous recevez beaucoup de sollicitations. Alors je vais être direct :
+
+Si la croissance digitale de {{entreprise}} n'est pas une priorité en ce moment, dites-le-moi — je ne vous dérangerai plus.
+
+Mais si c'est simplement une question de timing, je peux vous recontacter dans 3 mois. Qu'est-ce qui vous arrange ?
+
+Bonne journée,
+{{signature}}`,
+      },
+      { id: uuidv4(), ordre: 6, action: 'tache', delaiJours: 3, tacheDescription: 'Si pas de réponse, ajouter {{prenom}} {{nom}} en liste de rappel 3 mois. Si réponse négative, marquer comme "pas intéressé".' },
+    ],
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 6. UPSELL / CROSS-SELL
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    nom: 'Upsell Client Existant',
+    type: 'custom',
+    description: 'Proposer des services additionnels aux clients satisfaits',
+    isActive: true,
+    steps: [
+      {
+        id: uuidv4(), ordre: 0, action: 'email', delaiJours: 0,
+        sujet: '{{prenom}}, une opportunité pour aller plus loin',
+        contenu: `Bonjour {{prenom}},
+
+Les résultats de notre collaboration sur [projet actuel] sont très encourageants. Bravo à toute l'équipe de {{entreprise}} !
+
+En analysant vos données, on a identifié un levier de croissance supplémentaire que vous pourriez activer rapidement :
+
+[Service complémentaire personnalisé]
+
+D'après nos estimations, cela pourrait générer +30% de résultats additionnels avec un investissement maîtrisé.
+
+Envie d'en savoir plus ? Je peux vous préparer une mini-proposition en 48h.
+
+Cordialement,
+{{signature}}`,
+      },
+      { id: uuidv4(), ordre: 1, action: 'attente', delaiJours: 5 },
+      {
+        id: uuidv4(), ordre: 2, action: 'email', delaiJours: 0,
+        sujet: 'Les chiffres parlent d\'eux-mêmes',
+        contenu: `{{prenom}},
+
+Je voulais partager un cas similaire au vôtre.
+
+Un client qui a ajouté [service complémentaire] à sa collaboration avec nous a vu :
+- +45% de conversions en 2 mois
+- Un ROI de x3.2 sur l'investissement additionnel
+- Une réduction de 25% du coût d'acquisition global
+
+Pas mal pour un ajout qui ne représente que 20% de budget en plus, non ?
+
+On en discute ?
+
+{{signature}}`,
+      },
+      { id: uuidv4(), ordre: 3, action: 'tache', delaiJours: 3, tacheDescription: 'Préparer une mini-proposition personnalisée pour {{prenom}} {{nom}} — inclure les résultats actuels et la projection avec le service additionnel' },
     ],
   },
 ];
