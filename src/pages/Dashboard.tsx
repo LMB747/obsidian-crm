@@ -43,7 +43,7 @@ const projectStatusColors: Record<string, string> = {
 export const Dashboard: React.FC = () => {
   const state = useStore();
   const stats = selectDashboardStats(state);
-  const { projects, clients, activities, invoices, snoozeSubscriptions, freelancers, timerSessions, settings, setActiveSection } = state;
+  const { projects, clients, activities, invoices, snoozeSubscriptions, freelancers, timerSessions, settings, setActiveSection, currentUser } = state;
 
   // Dynamic overdue invoices
   const overdueInvoices = invoices.filter(i => i.statut === 'en retard');
@@ -246,7 +246,7 @@ export const Dashboard: React.FC = () => {
               <div className="w-2 h-2 rounded-full bg-accent-green animate-pulse" />
               <span className="text-accent-green text-xs font-semibold uppercase tracking-wider">Tableau de bord actif</span>
             </div>
-            <h2 className="font-display font-bold text-white text-2xl">Bonjour, {settings.nom} 👋</h2>
+            <h2 className="font-display font-bold text-white text-2xl">Bonjour, {currentUser?.prenom || settings.nom || ''} 👋</h2>
             <p className="text-slate-400 text-sm mt-1">
               Vous avez <span className="text-white font-semibold">{stats.projetsEnCours} projets en cours</span> et{' '}
               <span className="text-amber-400 font-semibold">
