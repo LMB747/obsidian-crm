@@ -117,20 +117,20 @@ export const useStore = create<CRMStore>()(
         };
 
         set(state => {
-          const freelancers = data.freelancers.length > 0 ? dedup(filterDeleted(data.freelancers)) : dedup(state.freelancers);
+          // Supabase = source de vérité. Un tableau vide = "tout supprimé", pas "pas de données".
           return {
-            clients: data.clients.length > 0 ? filterDeleted(data.clients) : state.clients,
-            freelancers,
-            projects: data.projects.length > 0 ? filterDeleted(data.projects) : state.projects,
-            invoices: data.invoices.length > 0 ? filterDeleted(data.invoices) : state.invoices,
-            devis: data.devis.length > 0 ? filterDeleted(data.devis) : state.devis,
-            snoozeSubscriptions: data.snoozeSubscriptions.length > 0 ? filterDeleted(data.snoozeSubscriptions) : state.snoozeSubscriptions,
+            clients: filterDeleted(data.clients),
+            freelancers: dedup(filterDeleted(data.freelancers)),
+            projects: filterDeleted(data.projects),
+            invoices: filterDeleted(data.invoices),
+            devis: filterDeleted(data.devis),
+            snoozeSubscriptions: filterDeleted(data.snoozeSubscriptions),
             settings: data.settings || state.settings,
-            unifiedTags: data.unifiedTags.length > 0 ? filterDeleted(data.unifiedTags) : state.unifiedTags,
-            projectTemplates: data.projectTemplates.length > 0 ? filterDeleted(data.projectTemplates) : state.projectTemplates,
-            clientPortalAccesses: data.clientPortalAccesses.length > 0 ? filterDeleted(data.clientPortalAccesses) : state.clientPortalAccesses,
-            emailSequences: data.emailSequences.length > 0 ? filterDeleted(data.emailSequences) : state.emailSequences,
-            sequenceEnrollments: data.sequenceEnrollments.length > 0 ? filterDeleted(data.sequenceEnrollments) : state.sequenceEnrollments,
+            unifiedTags: filterDeleted(data.unifiedTags),
+            projectTemplates: filterDeleted(data.projectTemplates),
+            clientPortalAccesses: filterDeleted(data.clientPortalAccesses),
+            emailSequences: filterDeleted(data.emailSequences),
+            sequenceEnrollments: filterDeleted(data.sequenceEnrollments),
           };
         });
       },

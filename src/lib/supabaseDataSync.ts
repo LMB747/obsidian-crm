@@ -73,12 +73,12 @@ async function deleteItem(table: string, id: string) {
   ]);
 }
 
-/** Récupérer les IDs supprimés récemment (dernières 24h) */
+/** Récupérer les IDs supprimés (derniers 30 jours — ne pas réduire !) */
 async function getRecentDeletions(): Promise<Map<string, Set<string>>> {
   const supabase = await getSupabase();
   if (!supabase) return new Map();
 
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const { data } = await supabase
     .from('crm_deletions')
     .select('id, table_name')
@@ -175,10 +175,8 @@ export async function loadAllFromSupabase(): Promise<CRMData | null> {
     const safeProjects = filterDel(projects, 'crm_projects');
     const safeInvoices = filterDel(invoices, 'crm_invoices');
 
-    // Only return if we actually have data in Supabase
-    const hasData = safeClients.length > 0 || safeProjects.length > 0 || safeFreelancers.length > 0 || safeInvoices.length > 0;
-    if (!hasData) return null;
-
+    // Toujours retourner les données Supabase, même si tout a été supprimé
+    // (retourner null empêcherait de vider le store local après suppression)
     return {
       clients: safeClients,
       freelancers: safeFreelancers,
