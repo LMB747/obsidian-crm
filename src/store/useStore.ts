@@ -818,12 +818,25 @@ export const useStore = create<CRMStore>()(
         return { success: true };
       },
 
-      logout: () => {
+      logout: async () => {
         get()._audit('logout', undefined, 'Déconnexion');
-        set({ currentUser: null });
+        set({ currentUser: null, setupComplete: false });
+        // Nettoyer toutes les sessions stockées
         try { localStorage.removeItem('obsidian-session'); } catch {}
-        // Supabase signout (async, fire and forget)
-        import('../lib/supabaseAuth').then(m => m.signOut()).catch(() => {});
+        try {
+          // Supprimer le cache de session Supabase
+          Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('sb-') && key.includes('-auth-token')) {
+              localStorage.removeItem(key);
+            }
+          });
+        } catch {}
+        // Supabase signout — attendre que ça termine AVANT le reload
+        try {
+          const { signOut } = await import('../lib/supabaseAuth');
+          await signOut();
+        } catch {}
+        window.location.hash = '';
         window.location.reload();
       },
 
