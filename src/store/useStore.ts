@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import { CRMStore, Client, Freelancer, Project, Invoice, SnoozeSubscription, Activity, Task, AgencySettings, TimerSession, UserAccount, AuditLog, TaskNote, ProjectActivity, Notification, Workspace, Invitation, Objective, ProjectSubCategory, UnifiedTag, PersonalTask, PersonalNote, ClientPortalAccess, ProjectTemplate, Devis, EmailSequence, SequenceEnrollment, SequenceStep } from '../types';
+import { CRMStore, Client, Freelancer, Project, Invoice, SnoozeSubscription, Activity, Task, AgencySettings, TimerSession, UserAccount, AuditLog, TaskNote, ProjectActivity, Notification, Workspace, Invitation, Objective, ProjectSubCategory, UnifiedTag, PersonalTask, PersonalNote, ClientPortalAccess, ProjectTemplate, Devis, EmailSequence, SequenceEnrollment, SequenceStep, ProjectAction } from '../types';
 import { toast } from '../components/ui/Toast';
 import { verifyPassword } from '../utils/crypto';
 import * as supaService from '../lib/supabaseService';
@@ -1382,6 +1382,11 @@ export const useStore = create<CRMStore>()(
       },
 
       addFreelancerToProject: (projectId, freelancerId) => {
+        const user = get().currentUser;
+        if (user?.role !== 'admin') {
+          toast.error('Seuls les administrateurs peuvent gérer l\'équipe');
+          return;
+        }
         set((state) => ({
           projects: state.projects.map((p) =>
             p.id === projectId
@@ -1412,6 +1417,11 @@ export const useStore = create<CRMStore>()(
       },
 
       removeFreelancerFromProject: (projectId, freelancerId) => {
+        const user = get().currentUser;
+        if (user?.role !== 'admin') {
+          toast.error('Seuls les administrateurs peuvent gérer l\'équipe');
+          return;
+        }
         set((state) => ({
           projects: state.projects.map((p) =>
             p.id === projectId
@@ -1419,7 +1429,136 @@ export const useStore = create<CRMStore>()(
               : p
           ),
         }));
+        get()._audit('remove_freelancer', 'projects', `Prestataire retiré du projet ${get().projects.find(p => p.id === projectId)?.nom}`);
       },
+
+      // ─── Archive & Corbeille ──────────────────────────────────────────
+      archiveProject: (id, reason) => {
+        const user = get().currentUser;
+        if (!user) return;
+        const project = get().projects.find(p => p.id === id);
+        if (!project) return;
+        set(state => ({
+          projects: state.projects.map(p => p.id === id ? {
+            ...p,
+            isArchived: true,
+            archivedAt: new Date().toISOString(),
+            archivedBy: user.id,
+            archivedByNom: `${user.prenom} ${user.nom}`,
+            archiveReason: reason,
+            previousStatut: p.statut,
+            statut: 'archivé' as any,
+          } : p),
+        }));
+        get()._audit('archive_project', 'projects', `Projet "${project.nom}" archivé${reason ? ` — ${reason}` : ''}`);
+        get().addNotification({ titre: 'Projet archivé', type: 'info', message: `Projet "${project.nom}" archivé`, lu: false, date: new Date().toISOString(), section: 'projects' });
+      },
+
+      restoreProject: (id) => {
+        const user = get().currentUser;
+        if (user?.role !== 'admin') {
+          toast.error('Seuls les administrateurs peuvent restaurer un projet');
+          return;
+        }
+        const project = get().projects.find(p => p.id === id);
+        if (!project) return;
+        set(state => ({
+          projects: state.projects.map(p => p.id === id ? {
+            ...p,
+            isArchived: false,
+            archivedAt: undefined,
+            archivedBy: undefined,
+            archivedByNom: undefined,
+            archiveReason: undefined,
+            statut: p.previousStatut || 'planification',
+            previousStatut: undefined,
+          } : p),
+        }));
+        get()._audit('restore_project', 'projects', `Projet "${project.nom}" restauré depuis les archives`);
+        get().addNotification({ titre: 'Projet restauré', type: 'success', message: `Projet "${project.nom}" restauré`, lu: false, date: new Date().toISOString(), section: 'projects' });
+      },
+
+      softDeleteProject: (id, reason) => {
+        const user = get().currentUser;
+        if (user?.role !== 'admin') {
+          toast.error('Seuls les administrateurs peuvent supprimer un projet');
+          return;
+        }
+        const project = get().projects.find(p => p.id === id);
+        if (!project) return;
+        set(state => ({
+          projects: state.projects.map(p => p.id === id ? {
+            ...p,
+            isDeleted: true,
+            deletedAt: new Date().toISOString(),
+            deletedBy: user.id,
+            deletedByNom: `${user.prenom} ${user.nom}`,
+            deleteReason: reason,
+            previousStatut: p.isArchived ? p.previousStatut : p.statut,
+            isArchived: false,
+          } : p),
+        }));
+        get()._audit('soft_delete_project', 'projects', `Projet "${project.nom}" mis en corbeille${reason ? ` — ${reason}` : ''}`);
+        get().addNotification({ titre: 'Projet en corbeille', type: 'warning', message: `Projet "${project.nom}" mis en corbeille`, lu: false, date: new Date().toISOString(), section: 'projects' });
+      },
+
+      restoreDeletedProject: (id) => {
+        const user = get().currentUser;
+        if (user?.role !== 'admin') return;
+        const project = get().projects.find(p => p.id === id);
+        if (!project) return;
+        set(state => ({
+          projects: state.projects.map(p => p.id === id ? {
+            ...p,
+            isDeleted: false,
+            deletedAt: undefined,
+            deletedBy: undefined,
+            deletedByNom: undefined,
+            deleteReason: undefined,
+            statut: p.previousStatut || 'planification',
+            previousStatut: undefined,
+          } : p),
+        }));
+        get()._audit('restore_deleted_project', 'projects', `Projet "${project.nom}" restauré depuis la corbeille`);
+      },
+
+      permanentDeleteProject: (id) => {
+        const user = get().currentUser;
+        if (user?.role !== 'admin') return;
+        const project = get().projects.find(p => p.id === id);
+        if (!project || !project.isDeleted) return;
+        get().deleteProject(id);
+        get()._audit('permanent_delete_project', 'projects', `Projet "${project.nom}" supprimé définitivement`);
+      },
+
+      emptyTrash: () => {
+        const user = get().currentUser;
+        if (user?.role !== 'admin') return;
+        const deleted = get().projects.filter(p => p.isDeleted);
+        deleted.forEach(p => get().deleteProject(p.id));
+        get()._audit('empty_trash', 'projects', `${deleted.length} projet(s) supprimé(s) définitivement`);
+      },
+
+      canPerformProjectAction: (action) => {
+        const user = get().currentUser;
+        if (!user) return false;
+        if (user.role === 'admin') return true;
+        if (user.role === 'viewer') return false;
+        // Freelancer
+        switch (action) {
+          case 'create':
+          case 'edit':
+            return (user.permissions || []).includes('projects');
+          case 'archive':
+            return true;
+          default:
+            return false;
+        }
+      },
+
+      getActiveProjects: () => get().projects.filter(p => !p.isArchived && !p.isDeleted),
+      getArchivedProjects: () => get().projects.filter(p => p.isArchived && !p.isDeleted),
+      getDeletedProjects: () => get().projects.filter(p => p.isDeleted),
 
       completeSetup: ({ agencyName, adminEmail, passwordHash }) => {
         set((state) => ({

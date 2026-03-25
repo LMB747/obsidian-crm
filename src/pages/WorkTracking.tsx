@@ -430,7 +430,7 @@ export const WorkTracking: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-4 py-4 text-center hidden lg:table-cell">
-                      <Badge variant={{ 'en cours': 'purple', 'terminé': 'success', 'planification': 'info', 'en révision': 'warning', 'en pause': 'default', 'annulé': 'error' }[project.statut] as any}>
+                      <Badge variant={{ 'en cours': 'purple', 'terminé': 'success', 'planification': 'info', 'en révision': 'warning', 'en pause': 'default', 'annulé': 'error', 'archivé': 'info' }[project.statut] as any}>
                         {project.statut}
                       </Badge>
                     </td>

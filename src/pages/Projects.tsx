@@ -7,10 +7,11 @@ import {
   List, Columns, AlertTriangle, Download, Search, X,
   Activity, MessageSquare, FolderPlus, ArrowRight, Flag, FileText,
   Crosshair, Layers, Tag, Package, Wallet, GanttChart,
-  Link, ExternalLink, Pen, HardDrive, Github, Columns3, Video, TrendingUp, MessageCircle, Paperclip
+  Link, ExternalLink, Pen, HardDrive, Github, Columns3, Video, TrendingUp, MessageCircle, Paperclip,
+  Archive, RotateCcw, Lock
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { Project, ProjectStatus, Task, Freelancer, Objective, ProjectSubCategory, Livrable, LivrableType, LivrableStatut, DepenseProjet, LienAvancementType, Devise } from '../types';
+import { Project, ProjectStatus, ProjectAction, Task, Freelancer, Objective, ProjectSubCategory, Livrable, LivrableType, LivrableStatut, DepenseProjet, LienAvancementType, Devise } from '../types';
 import { Badge } from '../components/ui/Badge';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { Modal } from '../components/ui/Modal';
@@ -33,11 +34,12 @@ const statusConfig: Record<ProjectStatus, { label: string; variant: any; icon: R
   'terminé':       { label: 'Terminé',       variant: 'success', icon: CheckCircle2,  color: 'text-emerald-400' },
   'en pause':      { label: 'En pause',      variant: 'default', icon: Pause,         color: 'text-slate-400' },
   'annulé':        { label: 'Annulé',        variant: 'error',   icon: AlertCircle,   color: 'text-red-400' },
+  'archivé':       { label: 'Archivé',       variant: 'info',    icon: Archive,       color: 'text-blue-400' },
 };
 
 const statusHex: Record<ProjectStatus, string> = {
   'planification': '#06b6d4', 'en cours': '#7c3aed', 'en révision': '#f59e0b',
-  'terminé': '#10b981', 'en pause': '#64748b', 'annulé': '#ef4444',
+  'terminé': '#10b981', 'en pause': '#64748b', 'annulé': '#ef4444', 'archivé': '#3b82f6',
 };
 
 const taskStatusConfig = {
@@ -290,7 +292,7 @@ const ProjectTeam: React.FC<{
 
 export const Projects: React.FC = () => {
   const store = useStore();
-  const { projects, updateProject, deleteProject, updateTask, addTask, deleteTask, searchQuery, clients, addProject, addFreelancerToProject, removeFreelancerFromProject, freelancers, addObjective, updateObjective, deleteObjective, addSubCategory, deleteSubCategory, addLienAvancement, deleteLienAvancement, updateLivrable, currentUser, projectTemplates, saveProjectTemplate, createProjectFromTemplate } = store;
+  const { projects, updateProject, deleteProject, updateTask, addTask, deleteTask, searchQuery, clients, addProject, addFreelancerToProject, removeFreelancerFromProject, freelancers, addObjective, updateObjective, deleteObjective, addSubCategory, deleteSubCategory, addLienAvancement, deleteLienAvancement, updateLivrable, currentUser, projectTemplates, saveProjectTemplate, createProjectFromTemplate, archiveProject, restoreProject, softDeleteProject, restoreDeletedProject, permanentDeleteProject, emptyTrash, canPerformProjectAction, getActiveProjects, getArchivedProjects, getDeletedProjects } = store;
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [expandedProject, setExpandedProject] = useState<string | null>(projects[0]?.id || null);
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'tous'>('tous');
@@ -301,6 +303,14 @@ export const Projects: React.FC = () => {
   const [taskFreelancerFilter, setTaskFreelancerFilter] = useState<string>('all');
   const [projectTab, setProjectTab] = useState<Record<string, 'tasks' | 'equipe' | 'objectives' | 'timeline' | 'livrables' | 'budget' | 'liens' | 'chat' | 'fichiers' | 'gantt'>>({});
   const [showResourcePlanning, setShowResourcePlanning] = useState(false);
+  const [projectView, setProjectView] = useState<'active' | 'archived' | 'trash'>('active');
+
+  // Archive & Corbeille dialogs
+  const [archiveDialogProject, setArchiveDialogProject] = useState<string | null>(null);
+  const [deleteDialogProject, setDeleteDialogProject] = useState<string | null>(null);
+  const [permanentDeleteDialogProject, setPermanentDeleteDialogProject] = useState<string | null>(null);
+  const [emptyTrashDialog, setEmptyTrashDialog] = useState(false);
+  const [actionReason, setActionReason] = useState('');
 
   // Lien d'avancement modal
   const [lienModalOpen, setLienModalOpen] = useState<string | null>(null);
@@ -420,6 +430,10 @@ export const Projects: React.FC = () => {
 
   const filtered = useMemo(() => {
     let list = [...projects];
+    // Filter by view (active / archived / trash)
+    if (projectView === 'active') list = list.filter(p => !p.isArchived && !p.isDeleted);
+    else if (projectView === 'archived') list = list.filter(p => p.isArchived && !p.isDeleted);
+    else if (projectView === 'trash') list = list.filter(p => p.isDeleted);
     if (debouncedSearchQuery) {
       const q = debouncedSearchQuery.toLowerCase();
       list = list.filter(p => p.nom.toLowerCase().includes(q) || p.clientNom.toLowerCase().includes(q));
@@ -429,15 +443,16 @@ export const Projects: React.FC = () => {
       const pOrder = { urgente: 0, haute: 1, normale: 2, faible: 3 };
       return pOrder[a.priorite] - pOrder[b.priorite];
     });
-  }, [projects, debouncedSearchQuery, statusFilter]);
+  }, [projects, debouncedSearchQuery, statusFilter, projectView]);
 
+  const activeProjs = useMemo(() => projects.filter(p => !p.isArchived && !p.isDeleted), [projects]);
   const stats = useMemo(() => ({
-    total: projects.length,
-    enCours: projects.filter(p => p.statut === 'en cours').length,
-    termines: projects.filter(p => p.statut === 'terminé').length,
-    budgetTotal: projects.reduce((s, p) => s + p.budget, 0),
-    depensesTotal: projects.reduce((s, p) => s + p.depenses, 0),
-  }), [projects]);
+    total: activeProjs.length,
+    enCours: activeProjs.filter(p => p.statut === 'en cours').length,
+    termines: activeProjs.filter(p => p.statut === 'terminé').length,
+    budgetTotal: activeProjs.reduce((s, p) => s + p.budget, 0),
+    depensesTotal: activeProjs.reduce((s, p) => s + p.depenses, 0),
+  }), [activeProjs]);
 
   const priorityBadge: Record<string, any> = { urgente: 'error', haute: 'warning', normale: 'info', faible: 'default' };
   const barColor: Record<string, 'purple' | 'cyan' | 'green' | 'orange'> = { urgente: 'orange', haute: 'orange', normale: 'purple', faible: 'cyan' };
@@ -503,6 +518,21 @@ export const Projects: React.FC = () => {
         <StatCard title="Terminés" value={stats.termines} icon={CheckSquare} color="green" />
         <StatCard title="Budget Total" value={`${(stats.budgetTotal / 1000).toFixed(0)}k€`} icon={Euro} color="orange" subtitle={`Dépenses: ${(stats.depensesTotal / 1000).toFixed(0)}k€`} />
         <StatCard title="Marge nette" value={`${(stats.budgetTotal - stats.depensesTotal).toLocaleString('fr-FR')} €`} icon={TrendingUp} color="green" />
+      </div>
+
+      {/* ── Tabs: Actifs / Archives / Corbeille ── */}
+      <div className="flex items-center gap-2">
+        <button onClick={() => setProjectView('active')} className={clsx('px-3 py-1.5 rounded-lg text-xs font-semibold transition-all', projectView === 'active' ? 'bg-primary-500/20 text-primary-300 border border-primary-500/40' : 'bg-card text-slate-400 border border-card-border hover:text-white')}>
+          Actifs ({getActiveProjects().length})
+        </button>
+        <button onClick={() => setProjectView('archived')} className={clsx('px-3 py-1.5 rounded-lg text-xs font-semibold transition-all', projectView === 'archived' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40' : 'bg-card text-slate-400 border border-card-border hover:text-white')}>
+          Archives ({getArchivedProjects().length})
+        </button>
+        {canPerformProjectAction('delete') && (
+          <button onClick={() => setProjectView('trash')} className={clsx('px-3 py-1.5 rounded-lg text-xs font-semibold transition-all', projectView === 'trash' ? 'bg-red-500/20 text-red-300 border border-red-500/40' : 'bg-card text-slate-400 border border-card-border hover:text-white')}>
+            Corbeille ({getDeletedProjects().length})
+          </button>
+        )}
       </div>
 
       {/* ── Alerte projets en retard ─────────────────────────────────────── */}
@@ -595,8 +625,101 @@ export const Projects: React.FC = () => {
         </div>
       )}
 
+      {/* ── Archived View ─────────────────────────────────────────────── */}
+      {projectView === 'archived' && (
+        <div className="space-y-3">
+          {filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+              <Archive className="w-10 h-10 mb-3 opacity-30" />
+              <p className="text-sm font-medium">Aucun projet archivé</p>
+            </div>
+          ) : filtered.map(project => (
+            <div key={project.id} className="bg-card border border-blue-500/20 rounded-xl p-4 flex items-center justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <Archive className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                  <span className="text-white font-semibold text-sm truncate">{project.nom}</span>
+                  <Badge variant="info">{project.previousStatut || 'planification'}</Badge>
+                </div>
+                <div className="flex items-center gap-3 text-xs text-slate-500">
+                  <span>{project.clientNom}</span>
+                  {project.archivedAt && <span>Archivé le {new Date(project.archivedAt).toLocaleDateString('fr-FR')}</span>}
+                  {project.archivedByNom && <span>par {project.archivedByNom}</span>}
+                  {project.archiveReason && <span className="text-slate-400 italic">— {project.archiveReason}</span>}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {canPerformProjectAction('restore_archive') && (
+                  <button onClick={() => restoreProject(project.id)} className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 border border-blue-500/30 px-3 py-1.5 rounded-lg hover:bg-blue-500/10 transition-all">
+                    <RotateCcw className="w-3.5 h-3.5" /> Restaurer
+                  </button>
+                )}
+                {canPerformProjectAction('delete') && (
+                  <button onClick={() => setDeleteDialogProject(project.id)} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-accent-red border border-card-border px-3 py-1.5 rounded-lg hover:bg-red-500/10 transition-all">
+                    <Trash2 className="w-3.5 h-3.5" /> Supprimer
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Trash View ─────────────────────────────────────────────────── */}
+      {projectView === 'trash' && (
+        <div className="space-y-3">
+          {getDeletedProjects().length > 0 && canPerformProjectAction('empty_trash') && (
+            <div className="flex justify-end">
+              <button onClick={() => setEmptyTrashDialog(true)} className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 border border-red-500/30 px-3 py-1.5 rounded-lg hover:bg-red-500/10 transition-all">
+                <Trash2 className="w-3.5 h-3.5" /> Vider la corbeille
+              </button>
+            </div>
+          )}
+          {filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+              <Trash2 className="w-10 h-10 mb-3 opacity-30" />
+              <p className="text-sm font-medium">La corbeille est vide</p>
+            </div>
+          ) : filtered.map(project => {
+            const daysSinceDeletion = project.deletedAt ? Math.floor((Date.now() - new Date(project.deletedAt).getTime()) / (1000 * 60 * 60 * 24)) : 0;
+            const daysRemaining = Math.max(0, 30 - daysSinceDeletion);
+            return (
+              <div key={project.id} className="bg-card border border-red-500/20 rounded-xl p-4 flex items-center justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Trash2 className="w-4 h-4 text-red-400 flex-shrink-0" />
+                    <span className="text-white font-semibold text-sm truncate">{project.nom}</span>
+                    <span className={clsx('text-[10px] font-bold px-2 py-0.5 rounded-full', daysRemaining <= 7 ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400')}>
+                      {daysRemaining}j restants
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-slate-500">
+                    <span>{project.clientNom}</span>
+                    {project.deletedAt && <span>Supprimé le {new Date(project.deletedAt).toLocaleDateString('fr-FR')}</span>}
+                    {project.deletedByNom && <span>par {project.deletedByNom}</span>}
+                    {project.deleteReason && <span className="text-slate-400 italic">— {project.deleteReason}</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {canPerformProjectAction('restore_delete') && (
+                    <button onClick={() => restoreDeletedProject(project.id)} className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 px-3 py-1.5 rounded-lg hover:bg-emerald-500/10 transition-all">
+                      <RotateCcw className="w-3.5 h-3.5" /> Récupérer
+                    </button>
+                  )}
+                  {canPerformProjectAction('permanent_delete') && (
+                    <button onClick={() => setPermanentDeleteDialogProject(project.id)} className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 border border-red-500/30 px-3 py-1.5 rounded-lg hover:bg-red-500/10 transition-all">
+                      <Trash2 className="w-3.5 h-3.5" /> Supprimer définitivement
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* ── Kanban View ──────────────────────────────────────────────────── */}
-      {view === 'kanban' && (
+      {projectView === 'active' && view === 'kanban' && (
         <div className="flex gap-4 overflow-x-auto pb-4">
           {kanbanColumns.map(({ statut, borderColor, titleColor }) => {
             const colProjects = filtered.filter(p => p.statut === statut);
@@ -646,11 +769,19 @@ export const Projects: React.FC = () => {
                           <Edit2 className="w-3 h-3" /> Modifier
                         </button>
                         <button
-                          onClick={e => { e.stopPropagation(); setConfirmDelete(project.id); }}
-                          className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-accent-red border border-card-border px-2 py-1 rounded-lg hover:bg-red-500/10 transition-all"
+                          onClick={e => { e.stopPropagation(); setArchiveDialogProject(project.id); }}
+                          className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-blue-300 border border-card-border px-2 py-1 rounded-lg hover:bg-blue-500/10 transition-all"
                         >
-                          <Trash2 className="w-3 h-3" /> Supprimer
+                          <Archive className="w-3 h-3" /> Archiver
                         </button>
+                        {canPerformProjectAction('delete') && (
+                          <button
+                            onClick={e => { e.stopPropagation(); setDeleteDialogProject(project.id); }}
+                            className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-accent-red border border-card-border px-2 py-1 rounded-lg hover:bg-red-500/10 transition-all"
+                          >
+                            <Trash2 className="w-3 h-3" /> Supprimer
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -665,7 +796,7 @@ export const Projects: React.FC = () => {
       )}
 
       {/* ── Gantt View ──────────────────────────────────────────────────── */}
-      {view === 'gantt' && (() => {
+      {projectView === 'active' && view === 'gantt' && (() => {
         // Calculate timeline bounds
         const allDates = filtered.flatMap(p => {
           const dates: number[] = [];
@@ -781,7 +912,7 @@ export const Projects: React.FC = () => {
       })()}
 
       {/* ── Project List ─────────────────────────────────────────────────── */}
-      {view === 'list' && (
+      {projectView === 'active' && view === 'list' && (
         <div className="space-y-4">
           {filtered.map((project) => {
             const sc = statusConfig[project.statut];
@@ -853,12 +984,21 @@ export const Projects: React.FC = () => {
                           <Edit2 className="w-3.5 h-3.5" /> Modifier
                         </button>
                         <button
-                          onClick={() => setConfirmDelete(project.id)}
-                          title="Supprimer"
-                          className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-accent-red border border-card-border px-2.5 py-1.5 rounded-lg hover:bg-red-500/10 transition-all"
+                          onClick={() => setArchiveDialogProject(project.id)}
+                          title="Archiver"
+                          className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-blue-300 border border-card-border px-2.5 py-1.5 rounded-lg hover:bg-blue-500/10 transition-all"
                         >
-                          <Trash2 className="w-3.5 h-3.5" /> Supprimer
+                          <Archive className="w-3.5 h-3.5" /> Archiver
                         </button>
+                        {canPerformProjectAction('delete') && (
+                          <button
+                            onClick={() => setDeleteDialogProject(project.id)}
+                            title="Supprimer"
+                            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-accent-red border border-card-border px-2.5 py-1.5 rounded-lg hover:bg-red-500/10 transition-all"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" /> Supprimer
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1083,12 +1223,19 @@ export const Projects: React.FC = () => {
                     {/* Équipe tab */}
                     {(projectTab[project.id] ?? 'tasks') === 'equipe' && (
                       <div className="p-5">
-                        <ProjectTeam
-                          project={project}
-                          allFreelancers={freelancers}
-                          onAdd={(fid) => addFreelancerToProject(project.id, fid)}
-                          onRemove={(fid) => removeFreelancerFromProject(project.id, fid)}
-                        />
+                        {canPerformProjectAction('manage_team') ? (
+                          <ProjectTeam
+                            project={project}
+                            allFreelancers={freelancers}
+                            onAdd={(fid) => addFreelancerToProject(project.id, fid)}
+                            onRemove={(fid) => removeFreelancerFromProject(project.id, fid)}
+                          />
+                        ) : (
+                          <div className="flex items-center gap-2 p-3 bg-obsidian-700 rounded-xl border border-card-border">
+                            <Lock className="w-4 h-4 text-slate-500" />
+                            <span className="text-xs text-slate-500">Seuls les administrateurs peuvent gérer l&apos;équipe</span>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -1699,7 +1846,7 @@ export const Projects: React.FC = () => {
         </div>
       </Modal>
 
-      {/* ── Confirm Delete ─────────────────────────────────────────── */}
+      {/* ── Confirm Delete (legacy) ─────────────────────────────────── */}
       <ConfirmDialog
         isOpen={!!confirmDelete}
         onCancel={() => setConfirmDelete(null)}
@@ -1707,6 +1854,88 @@ export const Projects: React.FC = () => {
         title="Supprimer le projet ?"
         message="Cette action est irréversible. Toutes les données associées seront perdues."
         confirmLabel="Supprimer"
+        cancelLabel="Annuler"
+        variant="danger"
+      />
+
+      {/* ── Archive Dialog ─────────────────────────────────────────── */}
+      <ConfirmDialog
+        isOpen={!!archiveDialogProject}
+        onCancel={() => { setArchiveDialogProject(null); setActionReason(''); }}
+        onConfirm={() => {
+          if (archiveDialogProject) {
+            archiveProject(archiveDialogProject, actionReason || undefined);
+            setArchiveDialogProject(null);
+            setActionReason('');
+          }
+        }}
+        title="Archiver ce projet ?"
+        message="Le projet sera déplacé dans les archives. Il pourra être restauré par un administrateur."
+        confirmLabel="Archiver"
+        cancelLabel="Annuler"
+        variant="info"
+      >
+        <textarea
+          value={actionReason}
+          onChange={e => setActionReason(e.target.value)}
+          placeholder="Raison de l'archivage (optionnel)..."
+          className="w-full bg-obsidian-700 border border-card-border text-white text-sm rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all"
+          rows={2}
+        />
+      </ConfirmDialog>
+
+      {/* ── Soft-Delete Dialog ─────────────────────────────────────── */}
+      <ConfirmDialog
+        isOpen={!!deleteDialogProject}
+        onCancel={() => { setDeleteDialogProject(null); setActionReason(''); }}
+        onConfirm={() => {
+          if (deleteDialogProject) {
+            softDeleteProject(deleteDialogProject, actionReason || undefined);
+            setDeleteDialogProject(null);
+            setActionReason('');
+          }
+        }}
+        title="Mettre en corbeille ?"
+        message="Le projet sera mis en corbeille pendant 30 jours avant suppression automatique. Un administrateur peut le restaurer."
+        confirmLabel="Mettre en corbeille"
+        cancelLabel="Annuler"
+        variant="warning"
+      >
+        <textarea
+          value={actionReason}
+          onChange={e => setActionReason(e.target.value)}
+          placeholder="Raison de la suppression (optionnel)..."
+          className="w-full bg-obsidian-700 border border-card-border text-white text-sm rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-all"
+          rows={2}
+        />
+      </ConfirmDialog>
+
+      {/* ── Permanent Delete Dialog ────────────────────────────────── */}
+      <ConfirmDialog
+        isOpen={!!permanentDeleteDialogProject}
+        onCancel={() => { setPermanentDeleteDialogProject(null); setActionReason(''); }}
+        onConfirm={() => {
+          if (permanentDeleteDialogProject) {
+            permanentDeleteProject(permanentDeleteDialogProject);
+            setPermanentDeleteDialogProject(null);
+            setActionReason('');
+          }
+        }}
+        title="Suppression IRRÉVERSIBLE"
+        message="Cette action est définitive. Toutes les données du projet seront perdues pour toujours."
+        confirmLabel="Supprimer définitivement"
+        cancelLabel="Annuler"
+        variant="danger"
+      />
+
+      {/* ── Empty Trash Dialog ─────────────────────────────────────── */}
+      <ConfirmDialog
+        isOpen={emptyTrashDialog}
+        onCancel={() => setEmptyTrashDialog(false)}
+        onConfirm={() => { emptyTrash(); setEmptyTrashDialog(false); }}
+        title="Vider la corbeille ?"
+        message={`${getDeletedProjects().length} projet(s) seront supprimés définitivement. Cette action est IRRÉVERSIBLE.`}
+        confirmLabel="Vider la corbeille"
         cancelLabel="Annuler"
         variant="danger"
       />

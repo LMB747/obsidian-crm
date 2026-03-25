@@ -261,9 +261,10 @@ export const Analytics: React.FC = () => {
       'terminé': '#10b981',
       'en pause': '#8b5cf6',
       'annulé': '#ef4444',
+      'archivé': '#3b82f6',
     };
     return Object.entries(
-      projects.reduce((acc, p) => {
+      projects.filter(p => !p.isArchived && !p.isDeleted).reduce((acc, p) => {
         acc[p.statut] = (acc[p.statut] || 0) + 1;
         return acc;
       }, {} as Record<string, number>)

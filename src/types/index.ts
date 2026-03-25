@@ -129,7 +129,8 @@ export interface Client {
 }
 
 // ─── PROJECT ──────────────────────────────────────────────────────────────────
-export type ProjectStatus = 'planification' | 'en cours' | 'en révision' | 'terminé' | 'en pause' | 'annulé';
+export type ProjectStatus = 'planification' | 'en cours' | 'en révision' | 'terminé' | 'en pause' | 'annulé' | 'archivé';
+export type ProjectAction = 'create' | 'edit' | 'archive' | 'restore_archive' | 'delete' | 'restore_delete' | 'permanent_delete' | 'empty_trash' | 'manage_team';
 export type ProjectPriority = 'faible' | 'normale' | 'haute' | 'urgente';
 
 export interface Task {
@@ -182,6 +183,19 @@ export interface Project {
   livrables?: Livrable[];      // livrables attendus
   depensesProjet?: DepenseProjet[]; // dépenses enregistrées
   liensAvancement?: LienAvancement[];
+  // Archive
+  isArchived?: boolean;
+  archivedAt?: string;
+  archivedBy?: string;
+  archivedByNom?: string;
+  archiveReason?: string;
+  previousStatut?: ProjectStatus;
+  // Soft-Delete (corbeille)
+  isDeleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
+  deletedByNom?: string;
+  deleteReason?: string;
 }
 
 // ─── LIEN D'AVANCEMENT ──────────────────────────────────────────────────────
@@ -485,6 +499,18 @@ export interface CRMStore {
   deleteTask: (projectId: string, taskId: string) => void;
   addFreelancerToProject: (projectId: string, freelancerId: string) => void;
   removeFreelancerFromProject: (projectId: string, freelancerId: string) => void;
+
+  // Actions — Archive & Corbeille
+  archiveProject: (id: string, reason?: string) => void;
+  restoreProject: (id: string) => void;
+  softDeleteProject: (id: string, reason?: string) => void;
+  restoreDeletedProject: (id: string) => void;
+  permanentDeleteProject: (id: string) => void;
+  emptyTrash: () => void;
+  canPerformProjectAction: (action: ProjectAction) => boolean;
+  getActiveProjects: () => Project[];
+  getArchivedProjects: () => Project[];
+  getDeletedProjects: () => Project[];
 
   // Actions — Livrables
   addLivrable: (projectId: string, livrable: Omit<Livrable, 'id'>) => void;

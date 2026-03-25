@@ -33,6 +33,7 @@ const PROJECT_STATUS_COLORS: Record<string, string> = {
   'terminé':       'bg-green-500/20 text-green-400',
   'en pause':      'bg-orange-500/20 text-orange-400',
   'annulé':        'bg-red-500/20 text-red-400',
+  'archivé':       'bg-blue-500/20 text-blue-400',
 };
 
 interface TaskCardProps {

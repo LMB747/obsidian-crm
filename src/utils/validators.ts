@@ -35,7 +35,7 @@ export const projectSchema = z.object({
   description: z.string().optional().or(z.literal('')),
   clientId: z.string().min(1, 'Client requis'),
   clientNom: z.string().min(1),
-  statut: z.enum(['planification', 'en cours', 'en révision', 'terminé', 'en pause', 'annulé']),
+  statut: z.enum(['planification', 'en cours', 'en révision', 'terminé', 'en pause', 'annulé', 'archivé']),
   priorite: z.enum(['faible', 'normale', 'haute', 'urgente']),
   dateDebut: z.string().min(1, 'Date de début requise'),
   dateFin: z.string().min(1, 'Date de fin requise'),

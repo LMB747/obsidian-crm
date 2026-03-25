@@ -62,6 +62,7 @@ export const Dashboard: React.FC = () => {
   const today = new Date();
   const in7days = new Date(today.getTime() + 7 * 86400000);
   const upcomingDeadlines = projects.filter(p => {
+    if (p.isArchived || p.isDeleted) return false;
     if (!['en cours', 'en révision', 'planification'].includes(p.statut)) return false;
     const d = new Date(p.dateFin);
     return d >= today && d <= in7days;
@@ -114,7 +115,7 @@ export const Dashboard: React.FC = () => {
 
   // 2. CA prévisionnel
   const caPrevisionnel = useMemo(() =>
-    projects.filter(p => ['en cours', 'planification'].includes(p.statut)).reduce((s, p) => s + p.budget, 0)
+    projects.filter(p => !p.isArchived && !p.isDeleted && ['en cours', 'planification'].includes(p.statut)).reduce((s, p) => s + p.budget, 0)
   , [projects]);
 
   // 3. Charge freelancers (tâches actives par freelancer)
@@ -536,7 +537,7 @@ export const Dashboard: React.FC = () => {
           </div>
           <div className="space-y-3">
             {(() => {
-              const activeProjects = projects.filter(p => ['en cours', 'en révision', 'planification'].includes(p.statut)).slice(0, 4);
+              const activeProjects = projects.filter(p => !p.isArchived && !p.isDeleted && ['en cours', 'en révision', 'planification'].includes(p.statut)).slice(0, 4);
               if (activeProjects.length === 0) {
                 return (
                   <div className="py-10 text-center">
