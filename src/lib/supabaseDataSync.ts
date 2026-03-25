@@ -26,9 +26,23 @@ async function getSupabase() {
 
 // ─── Generic CRUD helpers ─────────────────────────────────────────────────
 
-async function upsertItems(table: string, items: Array<{ id: string; [key: string]: any }>) {
+async function syncItems(table: string, items: Array<{ id: string; [key: string]: any }>) {
   const supabase = await getSupabase();
-  if (!supabase || items.length === 0) return;
+  if (!supabase) return;
+
+  // 1. Charger les IDs existants dans Supabase
+  const { data: existing } = await supabase.from(table).select('id');
+  const remoteIds = new Set<string>((existing || []).map((r: any) => r.id as string));
+  const localIds = new Set<string>(items.map(i => i.id));
+
+  // 2. Supprimer les éléments qui n'existent plus localement
+  const toDelete: string[] = [...remoteIds].filter(id => !localIds.has(id));
+  if (toDelete.length > 0) {
+    await supabase.from(table).delete().in('id', toDelete);
+  }
+
+  // 3. Upsert les éléments locaux
+  if (items.length === 0) return;
 
   const rows = items.map(item => ({
     id: item.id,
@@ -36,7 +50,6 @@ async function upsertItems(table: string, items: Array<{ id: string; [key: strin
     updated_at: new Date().toISOString(),
   }));
 
-  // Batch upsert in chunks of 100
   for (let i = 0; i < rows.length; i += 100) {
     const chunk = rows.slice(i, i + 100);
     await supabase.from(table).upsert(chunk, { onConflict: 'id' });
@@ -146,16 +159,16 @@ export async function saveAllToSupabase(data: CRMData): Promise<void> {
 
   try {
     await Promise.all([
-      upsertItems('crm_clients', data.clients),
-      upsertItems('crm_freelancers', data.freelancers),
-      upsertItems('crm_projects', data.projects),
-      upsertItems('crm_invoices', data.invoices),
-      upsertItems('crm_devis', data.devis),
-      upsertItems('crm_snooze', data.snoozeSubscriptions),
+      syncItems('crm_clients', data.clients),
+      syncItems('crm_freelancers', data.freelancers),
+      syncItems('crm_projects', data.projects),
+      syncItems('crm_invoices', data.invoices),
+      syncItems('crm_devis', data.devis),
+      syncItems('crm_snooze', data.snoozeSubscriptions),
       data.settings ? upsertSingleton('crm_settings', 'global', data.settings) : Promise.resolve(),
-      upsertItems('crm_tags', data.unifiedTags),
-      upsertItems('crm_templates', data.projectTemplates),
-      upsertItems('crm_portal_accesses', data.clientPortalAccesses),
+      syncItems('crm_tags', data.unifiedTags),
+      syncItems('crm_templates', data.projectTemplates),
+      syncItems('crm_portal_accesses', data.clientPortalAccesses),
     ]);
   } catch (err) {
     console.error('[DataSync] Save failed:', err);
