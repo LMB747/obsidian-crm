@@ -6,6 +6,19 @@ import { toast } from '../components/ui/Toast';
 import { verifyPassword } from '../utils/crypto';
 import * as supaService from '../lib/supabaseService';
 import { loadAllFromSupabase, saveAllToSupabase, deleteFromSupabase, ENTITY_TABLE_MAP } from '../lib/supabaseDataSync';
+
+// Set global d'IDs récemment supprimés — empêche loadFromSupabase de les restaurer
+const recentlyDeleted = new Set<string>();
+function markDeleted(id: string) {
+  recentlyDeleted.add(id);
+  // Nettoyer après 30s (la sync aura eu le temps de se faire)
+  setTimeout(() => recentlyDeleted.delete(id), 30000);
+}
+/** Supprimer immédiatement d'une table Supabase (pas de debounce) */
+function deleteFromSupabaseNow(table: string, id: string) {
+  markDeleted(id);
+  deleteFromSupabase(table, id).catch(() => {});
+}
 import {
   mockClients,
   mockFreelancers,
@@ -89,7 +102,10 @@ export const useStore = create<CRMStore>()(
         const data = await loadAllFromSupabase();
         if (!data) return;
 
-        // Dédupliquer les freelancers par email (évite les doublons créés par la sync)
+        // Filtrer les items récemment supprimés (empêche la restauration)
+        const filterDeleted = (arr: any[]) => arr.filter(item => !recentlyDeleted.has(item.id));
+
+        // Dédupliquer les freelancers par email
         const dedup = (arr: any[]) => {
           const seen = new Set<string>();
           return arr.filter(item => {
@@ -101,23 +117,22 @@ export const useStore = create<CRMStore>()(
         };
 
         set(state => {
-          const freelancers = data.freelancers.length > 0 ? dedup(data.freelancers) : dedup(state.freelancers);
+          const freelancers = data.freelancers.length > 0 ? dedup(filterDeleted(data.freelancers)) : dedup(state.freelancers);
           return {
-            clients: data.clients.length > 0 ? data.clients : state.clients,
+            clients: data.clients.length > 0 ? filterDeleted(data.clients) : state.clients,
             freelancers,
-            projects: data.projects.length > 0 ? data.projects : state.projects,
-            invoices: data.invoices.length > 0 ? data.invoices : state.invoices,
-            devis: data.devis.length > 0 ? data.devis : state.devis,
-            snoozeSubscriptions: data.snoozeSubscriptions.length > 0 ? data.snoozeSubscriptions : state.snoozeSubscriptions,
+            projects: data.projects.length > 0 ? filterDeleted(data.projects) : state.projects,
+            invoices: data.invoices.length > 0 ? filterDeleted(data.invoices) : state.invoices,
+            devis: data.devis.length > 0 ? filterDeleted(data.devis) : state.devis,
+            snoozeSubscriptions: data.snoozeSubscriptions.length > 0 ? filterDeleted(data.snoozeSubscriptions) : state.snoozeSubscriptions,
             settings: data.settings || state.settings,
-            unifiedTags: data.unifiedTags.length > 0 ? data.unifiedTags : state.unifiedTags,
-            projectTemplates: data.projectTemplates.length > 0 ? data.projectTemplates : state.projectTemplates,
-            clientPortalAccesses: data.clientPortalAccesses.length > 0 ? data.clientPortalAccesses : state.clientPortalAccesses,
-            emailSequences: data.emailSequences.length > 0 ? data.emailSequences : state.emailSequences,
-            sequenceEnrollments: data.sequenceEnrollments.length > 0 ? data.sequenceEnrollments : state.sequenceEnrollments,
+            unifiedTags: data.unifiedTags.length > 0 ? filterDeleted(data.unifiedTags) : state.unifiedTags,
+            projectTemplates: data.projectTemplates.length > 0 ? filterDeleted(data.projectTemplates) : state.projectTemplates,
+            clientPortalAccesses: data.clientPortalAccesses.length > 0 ? filterDeleted(data.clientPortalAccesses) : state.clientPortalAccesses,
+            emailSequences: data.emailSequences.length > 0 ? filterDeleted(data.emailSequences) : state.emailSequences,
+            sequenceEnrollments: data.sequenceEnrollments.length > 0 ? filterDeleted(data.sequenceEnrollments) : state.sequenceEnrollments,
           };
         });
-        console.log('[DataSync] Loaded from Supabase');
       },
 
       // ─── Tags unifiés ─────────────────────────────────────────────────────
@@ -180,12 +195,12 @@ export const useStore = create<CRMStore>()(
 
       deleteClient: (id) => {
         const client = get().clients.find(c => c.id === id);
-        // Cascade: unlink projects and invoices
         set((state) => ({
           clients: state.clients.filter((c) => c.id !== id),
           projects: state.projects.map(p => p.clientId === id ? { ...p, clientId: '', clientNom: `${p.clientNom} (supprimé)` } : p),
           invoices: state.invoices.map(i => i.clientId === id ? { ...i, clientId: '', clientNom: `${i.clientNom} (supprimé)` } : i),
         }));
+        deleteFromSupabaseNow('crm_clients', id);
         toast.warning('Client supprimé', 'Les projets et factures liés ont été mis à jour.');
         get()._audit('delete_client', 'clients', client?.nom || id);
       },
@@ -233,6 +248,7 @@ export const useStore = create<CRMStore>()(
             })),
           })),
         }));
+        deleteFromSupabaseNow('crm_freelancers', id);
         toast.warning('Prestataire supprimé', 'Ses assignations ont été retirées.');
         get()._audit('delete_freelancer', 'freelancers', fl ? `${fl.prenom} ${fl.nom}` : id);
       },
@@ -275,6 +291,7 @@ export const useStore = create<CRMStore>()(
           projects: state.projects.filter((p) => p.id !== id),
           invoices: state.invoices.map(i => i.projectId === id ? { ...i, projectId: undefined, projectNom: `${i.projectNom || ''} (supprimé)` } : i),
         }));
+        deleteFromSupabaseNow('crm_projects', id);
         toast.warning('Projet supprimé', 'Les factures liées ont été délinkées.');
         get()._audit('delete_project', 'projects', proj?.nom || id);
       },
@@ -531,6 +548,7 @@ export const useStore = create<CRMStore>()(
       deleteInvoice: (id) => {
         const inv = get().invoices.find(i => i.id === id);
         set((state) => ({ invoices: state.invoices.filter((i) => i.id !== id) }));
+        deleteFromSupabaseNow('crm_invoices', id);
         toast.warning('Facture supprimée');
         get()._audit('delete_invoice', 'invoices', inv?.numero || id);
       },
@@ -552,6 +570,7 @@ export const useStore = create<CRMStore>()(
       },
       deleteDevis: (id) => {
         set(state => ({ devis: state.devis.filter(d => d.id !== id) }));
+        deleteFromSupabaseNow('crm_devis', id);
         get()._audit('delete_devis', 'devis', 'Devis supprimé');
       },
       convertDevisToInvoice: (devisId) => {
@@ -617,13 +636,15 @@ export const useStore = create<CRMStore>()(
         set(state => ({ emailSequences: state.emailSequences.map(s => s.id === id ? { ...s, ...updates } : s) }));
       },
       deleteEmailSequence: (id) => {
-        const seq = get().emailSequences.find(s => s.id === id);
+        const enrollmentsToDelete = get().sequenceEnrollments.filter(e => e.sequenceId === id);
         set(state => ({
           emailSequences: state.emailSequences.filter(s => s.id !== id),
           sequenceEnrollments: state.sequenceEnrollments.filter(e => e.sequenceId !== id),
         }));
+        deleteFromSupabaseNow('crm_email_sequences', id);
+        enrollmentsToDelete.forEach(e => deleteFromSupabaseNow('crm_sequence_enrollments', e.id));
         toast.warning('Séquence supprimée');
-        get()._audit('delete_sequence', 'sequences', seq?.nom || id);
+        get()._audit('delete_sequence', 'sequences', enrollmentsToDelete.length > 0 ? `+ ${enrollmentsToDelete.length} inscriptions` : id);
       },
       enrollInSequence: (sequenceId, clientId, clientNom) => {
         const seq = get().emailSequences.find(s => s.id === sequenceId);
@@ -1080,6 +1101,7 @@ export const useStore = create<CRMStore>()(
         set(state => ({
           clientPortalAccesses: state.clientPortalAccesses.filter(a => a.id !== id),
         }));
+        deleteFromSupabaseNow('crm_portal_accesses', id);
         get()._audit('delete_portal_access', 'clients', 'Accès portail supprimé');
       },
       getClientPortalByToken: (token) => {
@@ -1113,6 +1135,7 @@ export const useStore = create<CRMStore>()(
       },
       deleteProjectTemplate: (id) => {
         set(state => ({ projectTemplates: state.projectTemplates.filter(t => t.id !== id) }));
+        deleteFromSupabaseNow('crm_templates', id);
       },
       createProjectFromTemplate: (templateId, projectData) => {
         const template = get().projectTemplates.find(t => t.id === templateId);
