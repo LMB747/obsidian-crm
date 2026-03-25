@@ -113,6 +113,8 @@ export const useStore = create<CRMStore>()(
             unifiedTags: data.unifiedTags.length > 0 ? data.unifiedTags : state.unifiedTags,
             projectTemplates: data.projectTemplates.length > 0 ? data.projectTemplates : state.projectTemplates,
             clientPortalAccesses: data.clientPortalAccesses.length > 0 ? data.clientPortalAccesses : state.clientPortalAccesses,
+            emailSequences: data.emailSequences.length > 0 ? data.emailSequences : state.emailSequences,
+            sequenceEnrollments: data.sequenceEnrollments.length > 0 ? data.sequenceEnrollments : state.sequenceEnrollments,
           };
         });
         console.log('[DataSync] Loaded from Supabase');
@@ -1475,6 +1477,7 @@ export const useStore = create<CRMStore>()(
         devis: state.devis,
         emailSequences: state.emailSequences,
         sequenceEnrollments: state.sequenceEnrollments,
+        notifications: state.notifications,
       }),
     }
   )
@@ -1493,7 +1496,9 @@ useStore.subscribe((state, prevState) => {
     state.settings !== prevState.settings ||
     state.unifiedTags !== prevState.unifiedTags ||
     state.projectTemplates !== prevState.projectTemplates ||
-    state.clientPortalAccesses !== prevState.clientPortalAccesses;
+    state.clientPortalAccesses !== prevState.clientPortalAccesses ||
+    state.emailSequences !== prevState.emailSequences ||
+    state.sequenceEnrollments !== prevState.sequenceEnrollments;
 
   if (!dataChanged) return;
 
@@ -1510,6 +1515,8 @@ useStore.subscribe((state, prevState) => {
       unifiedTags: state.unifiedTags,
       projectTemplates: state.projectTemplates || [],
       clientPortalAccesses: state.clientPortalAccesses || [],
+      emailSequences: state.emailSequences || [],
+      sequenceEnrollments: state.sequenceEnrollments || [],
     });
   }, 3000);
 });

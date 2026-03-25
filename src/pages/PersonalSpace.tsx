@@ -16,6 +16,23 @@ import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEn
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
+// ─── HTML Sanitizer ──────────────────────────────────────────────────────────
+
+/** Basic HTML sanitizer — strips dangerous tags/attributes */
+function sanitizeHtml(html: string): string {
+  // Remove script tags and their content
+  let clean = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  // Remove event handlers (onclick, onerror, onload, etc.)
+  clean = clean.replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '');
+  clean = clean.replace(/\s+on\w+\s*=\s*[^\s>]*/gi, '');
+  // Remove javascript: URLs
+  clean = clean.replace(/href\s*=\s*["']javascript:[^"']*["']/gi, 'href="#"');
+  clean = clean.replace(/src\s*=\s*["']javascript:[^"']*["']/gi, 'src=""');
+  // Remove iframe, object, embed, form tags
+  clean = clean.replace(/<\/?(?:iframe|object|embed|form|base|meta|link)\b[^>]*>/gi, '');
+  return clean;
+}
+
 // ─── Config ─────────────────────────────────────────────────────────────────
 
 const STATUT_CONFIG: Record<PersonalTaskStatut, { label: string; color: string; bg: string }> = {
@@ -583,7 +600,13 @@ const SortableNoteCard: React.FC<{
             <button onClick={e => { e.stopPropagation(); onDelete(n.id); }} className="p-1 rounded-lg text-slate-600 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
           </div>
         </div>
-        <div className="text-xs text-slate-500 mt-1 line-clamp-3" dangerouslySetInnerHTML={{ __html: n.contenu || '<em>Note vide</em>' }} />
+        <div className="text-xs text-slate-500 mt-1 line-clamp-3">
+          {n.contenu ? (
+            <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(n.contenu) }} />
+          ) : (
+            <p className="text-slate-600 italic">Note vide</p>
+          )}
+        </div>
         <p className="text-[10px] text-slate-600 mt-2">{new Date(n.dateModification).toLocaleDateString('fr-FR')}</p>
       </div>
     </div>

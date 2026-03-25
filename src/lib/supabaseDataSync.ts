@@ -98,6 +98,15 @@ async function loadSingleton<T>(table: string, id: string): Promise<T | null> {
   return data?.data as T || null;
 }
 
+// ─── Sensitive data helpers ───────────────────────────────────────────────
+
+/** Strip API keys / secrets before syncing settings to Supabase */
+function stripSensitiveSettings(settings: any): any {
+  if (!settings) return settings;
+  const { resendApiKey, stripeKey, supabaseKey, revenueCatApiKey, revenueCatProjectId, ...safe } = settings;
+  return safe;
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────
 
 export interface CRMData {
@@ -111,6 +120,8 @@ export interface CRMData {
   unifiedTags: any[];
   projectTemplates: any[];
   clientPortalAccesses: any[];
+  emailSequences: any[];
+  sequenceEnrollments: any[];
 }
 
 /** Load all CRM data from Supabase */
@@ -118,7 +129,7 @@ export async function loadAllFromSupabase(): Promise<CRMData | null> {
   if (!isSupabaseConfigured()) return null;
 
   try {
-    const [clients, freelancers, projects, invoices, devis, snoozeSubscriptions, settings, unifiedTags, projectTemplates, clientPortalAccesses] = await Promise.all([
+    const [clients, freelancers, projects, invoices, devis, snoozeSubscriptions, settings, unifiedTags, projectTemplates, clientPortalAccesses, emailSequences, sequenceEnrollments] = await Promise.all([
       loadItems('crm_clients'),
       loadItems('crm_freelancers'),
       loadItems('crm_projects'),
@@ -129,6 +140,8 @@ export async function loadAllFromSupabase(): Promise<CRMData | null> {
       loadItems('crm_tags'),
       loadItems('crm_templates'),
       loadItems('crm_portal_accesses'),
+      loadItems('crm_email_sequences'),
+      loadItems('crm_sequence_enrollments'),
     ]);
 
     // Only return if we actually have data in Supabase
@@ -146,6 +159,8 @@ export async function loadAllFromSupabase(): Promise<CRMData | null> {
       unifiedTags,
       projectTemplates,
       clientPortalAccesses,
+      emailSequences,
+      sequenceEnrollments,
     };
   } catch (err) {
     console.error('[DataSync] Load failed:', err);
@@ -165,10 +180,12 @@ export async function saveAllToSupabase(data: CRMData): Promise<void> {
       syncItems('crm_invoices', data.invoices),
       syncItems('crm_devis', data.devis),
       syncItems('crm_snooze', data.snoozeSubscriptions),
-      data.settings ? upsertSingleton('crm_settings', 'global', data.settings) : Promise.resolve(),
+      data.settings ? upsertSingleton('crm_settings', 'global', stripSensitiveSettings(data.settings)) : Promise.resolve(),
       syncItems('crm_tags', data.unifiedTags),
       syncItems('crm_templates', data.projectTemplates),
       syncItems('crm_portal_accesses', data.clientPortalAccesses),
+      syncItems('crm_email_sequences', data.emailSequences),
+      syncItems('crm_sequence_enrollments', data.sequenceEnrollments),
     ]);
   } catch (err) {
     console.error('[DataSync] Save failed:', err);
@@ -192,4 +209,6 @@ export const ENTITY_TABLE_MAP: Record<string, string> = {
   unifiedTags: 'crm_tags',
   projectTemplates: 'crm_templates',
   clientPortalAccesses: 'crm_portal_accesses',
+  emailSequences: 'crm_email_sequences',
+  sequenceEnrollments: 'crm_sequence_enrollments',
 };
