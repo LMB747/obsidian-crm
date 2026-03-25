@@ -975,8 +975,13 @@ export const useStore = create<CRMStore>()(
           finalPermissions = defaultPermissions;
         }
 
-        // Use Supabase UUID if available, otherwise keep existing local ID, otherwise generate one
-        const resolvedUserId = supabaseId || existing?.id || uuidv4();
+        // Use Supabase UUID if available, otherwise keep existing local ID,
+        // otherwise reuse currentUser ID if email matches, otherwise generate one
+        const currentState = get();
+        const currentMatch = currentState.currentUser?.email?.toLowerCase() === email.toLowerCase()
+          ? currentState.currentUser
+          : null;
+        const resolvedUserId = supabaseId || existing?.id || currentMatch?.id || uuidv4();
 
         if (existing) {
           // Update existing user — also update their ID to match Supabase if it changed
@@ -1007,6 +1012,61 @@ export const useStore = create<CRMStore>()(
             derniereConnexion: new Date().toISOString(),
           };
           set(state => ({ users: [...state.users, newUser], currentUser: newUser }));
+        }
+
+        // BUG 7 fix: Link freelancer account to existing prestataire by email
+        if (role === 'freelancer') {
+          const state = get();
+          const user = state.currentUser;
+          if (user && !user.freelancerId) {
+            // Check if a matching freelancer already exists by email
+            const existingFreelancer = state.freelancers.find(
+              f => f.email?.toLowerCase() === email.toLowerCase()
+            );
+            if (existingFreelancer) {
+              // Link existing freelancer
+              const linked = { ...user, freelancerId: existingFreelancer.id };
+              set(s => ({
+                currentUser: linked,
+                users: s.users.map(u => u.id === linked.id ? linked : u),
+              }));
+            } else {
+              // Create a new freelancer entry
+              const newFreelancerId = uuidv4();
+              const newFreelancer = {
+                id: newFreelancerId,
+                nom: nom || '',
+                prenom: prenom || '',
+                email,
+                telephone: '',
+                entreprise: '',
+                specialite: 'autre' as const,
+                competences: [],
+                tjm: 0,
+                statut: 'actif' as const,
+                note: 5,
+                totalFacture: 0,
+                projetsTermines: 0,
+                tags: [],
+                portfolio: '',
+                iban: '',
+                bic: '',
+                tvaApplicable: false,
+                tauxTva: 0,
+                adresse: '',
+                siret: '',
+                numeroTVA: '',
+                notes: '',
+                dateCreation: new Date().toISOString().split('T')[0],
+              };
+              const linked = { ...user, freelancerId: newFreelancerId };
+              set(s => ({
+                freelancers: [...s.freelancers, newFreelancer],
+                currentUser: linked,
+                users: s.users.map(u => u.id === linked.id ? linked : u),
+              }));
+            }
+          }
         }
 
         // Load CRM data from Supabase after Supabase auth login

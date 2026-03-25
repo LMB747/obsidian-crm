@@ -411,13 +411,13 @@ export const FreelancerPortal: React.FC = () => {
     const result: { objective: Objective; project: Project }[] = [];
     for (const project of projects) {
       for (const obj of (project.objectives || [])) {
-        if ((obj.assigneAIds || []).includes(currentUser.id)) {
+        if ((obj.assigneAIds || []).some(id => myIds.includes(id))) {
           result.push({ objective: obj, project });
         }
       }
     }
     return result;
-  }, [projects, currentUser]);
+  }, [projects, myIds]);
 
   const handleStatusChange = (taskId: string, projectId: string, statut: Task['statut']) => {
     const prevTask = projects.find(p => p.id === projectId)?.taches.find(t => t.id === taskId);
@@ -698,10 +698,10 @@ export const FreelancerPortal: React.FC = () => {
 
       {/* ── Mes Ressources ──────────────────────────────────────────── */}
       {(() => {
-        const myProjects = projects.filter(p => p.freelancerIds?.includes(currentUser.freelancerId || currentUser.id));
+        const myProjects = projects.filter(p => p.freelancerIds?.some(fid => myIds.includes(fid)));
         const allLinks = myProjects
           .flatMap(p => (p.liensAvancement || [])
-            .filter(l => l.statutVisible && (l.freelancerIds.length === 0 || l.freelancerIds.includes(currentUser.freelancerId || currentUser.id)))
+            .filter(l => l.statutVisible && (l.freelancerIds.length === 0 || l.freelancerIds.some(fid => myIds.includes(fid))))
             .map(l => ({ ...l, projectNom: p.nom }))
           );
 
@@ -821,7 +821,7 @@ export const FreelancerPortal: React.FC = () => {
       })()}
 
       {/* ── Chat par projet ──────────────────────────────────────────── */}
-      {projects.filter(p => p.freelancerIds?.includes(currentUser?.freelancerId || currentUser?.id || '')).map(project => (
+      {projects.filter(p => p.freelancerIds?.some(fid => myIds.includes(fid))).map(project => (
         <div key={`chat-${project.id}`} className="mt-6">
           <div className="bg-card border border-card-border rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b border-card-border flex items-center gap-2">
@@ -836,7 +836,7 @@ export const FreelancerPortal: React.FC = () => {
       {/* ── Mes Factures ──────────────────────────────────────────── */}
       {(() => {
         const myProjects = projects.filter(p =>
-          p.freelancerIds?.includes(currentUser?.freelancerId || currentUser?.id || '')
+          p.freelancerIds?.some(fid => myIds.includes(fid))
         );
         const myInvoices = invoices.filter(i =>
           myProjects.some(p => p.id === i.projectId)

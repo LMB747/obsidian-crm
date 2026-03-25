@@ -117,10 +117,14 @@ async function loadSingleton<T>(table: string, id: string): Promise<T | null> {
 
 // ─── Sensitive data helpers ───────────────────────────────────────────────
 
-/** Strip API keys / secrets before syncing settings to Supabase */
+/** Strip API keys / secrets / financial data before syncing settings to Supabase */
 function stripSensitiveSettings(settings: any): any {
   if (!settings) return settings;
-  const { resendApiKey, stripeKey, supabaseKey, revenueCatApiKey, revenueCatProjectId, ...safe } = settings;
+  const {
+    resendApiKey, stripeKey, supabaseKey, revenueCatApiKey, revenueCatProjectId,
+    iban, bic, password, passwordHash, motDePasse,
+    ...safe
+  } = settings;
   return safe;
 }
 

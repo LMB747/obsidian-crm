@@ -82,6 +82,13 @@ const App: React.FC = () => {
         // No valid session found — clear any stale currentUser from persist
         useStore.setState({ currentUser: null });
       }
+
+      // Guard: if the restored user has been deactivated, clear session and force login
+      const restoredUser = useStore.getState().currentUser;
+      if (restoredUser && restoredUser.isActive === false) {
+        clearSession();
+        useStore.setState({ currentUser: null });
+      }
       setReady(true);
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

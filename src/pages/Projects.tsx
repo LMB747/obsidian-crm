@@ -462,17 +462,20 @@ export const Projects: React.FC = () => {
   const projetsEnRetard = useMemo(() => {
     return projects.filter(p => {
       if (p.statut === 'terminé' || p.statut === 'annulé') return false;
+      if (!p.dateFin) return false;
       return new Date(p.dateFin).getTime() < todayMs;
     });
   }, [projects, todayMs]);
 
   const getDaysLate = (dateFin: string): number => {
+    if (!dateFin) return 0;
     const diff = todayMs - new Date(dateFin).getTime();
     return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
   };
 
   const isLate = (p: { statut: string; dateFin: string }): boolean => {
     if (p.statut === 'terminé' || p.statut === 'annulé') return false;
+    if (!p.dateFin) return false;
     return new Date(p.dateFin).getTime() < todayMs;
   };
 
@@ -918,7 +921,7 @@ export const Projects: React.FC = () => {
             const sc = statusConfig[project.statut];
             const StatusIcon = sc.icon;
             const isExpanded = expandedProject === project.id;
-            const budgetPercent = Math.round((project.depenses / project.budget) * 100);
+            const budgetPercent = project.budget > 0 ? Math.round((project.depenses / project.budget) * 100) : 0;
             const tasksDone = project.taches.filter(t => t.statut === 'fait').length;
             const projectLate = isLate(project);
             const projectDaysLate = projectLate ? getDaysLate(project.dateFin) : 0;
@@ -1007,7 +1010,7 @@ export const Projects: React.FC = () => {
                   <div className="flex items-center gap-4 mt-4 ml-8 flex-wrap">
                     <div className="flex items-center gap-1.5 text-slate-400 text-xs">
                       <Calendar className="w-3.5 h-3.5" />
-                      <span>{new Date(project.dateDebut).toLocaleDateString('fr-FR')} → {new Date(project.dateFin).toLocaleDateString('fr-FR')}</span>
+                      <span>{project.dateDebut ? new Date(project.dateDebut).toLocaleDateString('fr-FR') : '—'} → {project.dateFin ? new Date(project.dateFin).toLocaleDateString('fr-FR') : '—'}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-slate-400 text-xs">
                       <CheckSquare className="w-3.5 h-3.5" />
