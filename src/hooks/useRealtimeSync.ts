@@ -105,12 +105,12 @@ export function useRealtimeSync() {
 
     channelsRef.current = [projectChannel, chatChannel, dataChannel];
 
-    // ── Fallback polling si Realtime ne fonctionne pas ──
+    // ── Polling périodique — garantit la sync même sans Realtime ──
+    // Si Realtime fonctionne: poll toutes les 60s (backup)
+    // Si Realtime ne fonctionne pas: poll toutes les 15s
     pollingRef.current = setInterval(() => {
-      if (!realtimeWorking) {
-        loadFromSupabase();
-      }
-    }, 30000); // 30s
+      loadFromSupabase();
+    }, realtimeWorking ? 60000 : 15000);
 
     return () => {
       channelsRef.current.forEach(ch => supabase.removeChannel(ch));

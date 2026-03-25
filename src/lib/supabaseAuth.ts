@@ -65,10 +65,22 @@ export async function signIn(email: string, password: string): Promise<{ success
   // Fetch profile from profiles table
   const profile = await getProfile(data.user.id);
 
+  // Check if user has been deactivated/deleted
+  if (profile && profile.is_active === false) {
+    await supabase.auth.signOut();
+    return { success: false, error: 'Ce compte a été désactivé. Contactez l\'administrateur.' };
+  }
+
+  // If profile was deleted from profiles table but auth user still exists
+  if (!profile) {
+    await supabase.auth.signOut();
+    return { success: false, error: 'Ce compte n\'existe plus. Contactez l\'administrateur.' };
+  }
+
   // Update last_login
   await supabase.from('profiles').update({ last_login: new Date().toISOString() }).eq('id', data.user.id);
 
-  return { success: true, user: profile || { id: data.user.id, email: data.user.email!, nom: '', prenom: '', role: 'viewer', is_active: true, created_at: data.user.created_at } };
+  return { success: true, user: profile };
 }
 
 /** Logout */

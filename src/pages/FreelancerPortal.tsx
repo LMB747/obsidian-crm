@@ -295,22 +295,31 @@ export const FreelancerPortal: React.FC = () => {
 
   // Find all tasks assigned to this user (par ID, par nom, ou par projet)
   // Collecter TOUS les IDs possibles : userId, freelancerId, et l'ID du prestataire trouvé par email/nom
+  // Normaliser les noms pour matching robuste (trim + collapse espaces multiples)
+  const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+
   const matchedFreelancer = useMemo(() => {
     // D'abord par freelancerId direct
     if (currentUser.freelancerId) {
       const f = freelancers.find(fl => fl.id === currentUser.freelancerId);
       if (f) return f;
     }
-    // Ensuite par email
+    // Ensuite par email (case-insensitive)
     if (currentUser.email) {
-      const f = freelancers.find(fl => fl.email === currentUser.email);
+      const emailLower = currentUser.email.toLowerCase();
+      const f = freelancers.find(fl => fl.email?.toLowerCase() === emailLower);
       if (f) return f;
     }
-    // Enfin par nom
-    const f = freelancers.find(fl =>
-      `${fl.prenom} ${fl.nom}`.toLowerCase().trim() === fullName.toLowerCase().trim()
-    );
-    return f || null;
+    // Enfin par nom (normalisé)
+    if (fullName.length > 1) {
+      const normalizedName = normalize(fullName);
+      const f = freelancers.find(fl =>
+        normalize(`${fl.prenom} ${fl.nom}`) === normalizedName ||
+        normalize(fl.nom) === normalize(currentUser.nom || '')
+      );
+      if (f) return f;
+    }
+    return null;
   }, [currentUser, freelancers, fullName]);
 
   const myIds = useMemo(() => {

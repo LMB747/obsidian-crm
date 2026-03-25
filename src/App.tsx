@@ -78,6 +78,9 @@ const App: React.FC = () => {
       const saved = getSession();
       if (saved) {
         syncToStore({ email: saved.email, nom: saved.nom || '', prenom: '', role: saved.role || 'admin' });
+      } else {
+        // No valid session found — clear any stale currentUser from persist
+        useStore.setState({ currentUser: null });
       }
       setReady(true);
     })();
