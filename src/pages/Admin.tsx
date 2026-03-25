@@ -348,6 +348,9 @@ export const Admin: React.FC = () => {
   const [clearLogsConfirm, setClearLogsConfirm] = useState(false);
 
   // ── Sync users from Supabase profiles on mount ──────────────────────────
+  // On utilise les profils Supabase comme SOURCE DE VÉRITÉ pour la liste des comptes.
+  // On ne fait PAS addUser (qui crée des prestataires en double).
+  // On met à jour le state users directement.
   const [supaSynced, setSupaSynced] = useState(false);
   useEffect(() => {
     if (supaSynced) return;
@@ -355,20 +358,26 @@ export const Admin: React.FC = () => {
       listUsers().then(profiles => {
         if (!profiles || profiles.length === 0) return;
         const localIds = new Set(users.map(u => u.id));
+        const localEmails = new Set(users.map(u => u.email?.toLowerCase()).filter(Boolean));
+
         for (const p of profiles) {
-          if (!localIds.has(p.id)) {
-            // Profile exists in Supabase but not locally — add it
-            addUser({
-              id: p.id,
-              email: p.email || '',
-              nom: p.nom || '',
-              prenom: p.prenom || '',
-              role: (p.role as any) || 'viewer',
-              permissions: (p.permissions as any) || [],
-              isActive: p.is_active !== false,
-              passwordHash: '',
-            } as any);
-          }
+          const emailLower = (p.email || '').toLowerCase();
+          // Skip si déjà présent par ID ou par email
+          if (localIds.has(p.id) || localEmails.has(emailLower)) continue;
+
+          // Ajouter directement au state SANS passer par addUser (évite création prestataire en double)
+          const newUser = {
+            id: p.id,
+            email: p.email || '',
+            nom: p.nom || '',
+            prenom: p.prenom || '',
+            role: (p.role as any) || 'viewer',
+            permissions: (p.permissions as any) || [],
+            isActive: p.is_active !== false,
+            passwordHash: '',
+            dateCreation: new Date().toISOString().split('T')[0],
+          };
+          useStore.setState(state => ({ users: [...state.users, newUser] }));
         }
         setSupaSynced(true);
       });
@@ -534,7 +543,9 @@ export const Admin: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    // Supprimer aussi dans Supabase profiles
+    const user = users.find(u => u.id === id);
+
+    // 1. Supprimer le profil Supabase
     try {
       const { getSupabase } = await import('../lib/supabaseAuth');
       const supabase = getSupabase();
@@ -542,9 +553,24 @@ export const Admin: React.FC = () => {
         await supabase.from('profiles').delete().eq('id', id);
       }
     } catch {}
+
+    // 2. Supprimer le prestataire associé (si freelancer)
+    if (user?.freelancerId) {
+      const { deleteFreelancer } = useStore.getState();
+      deleteFreelancer(user.freelancerId);
+    } else if (user?.email) {
+      // Chercher par email
+      const fl = freelancers.find(f => f.email?.toLowerCase() === user.email?.toLowerCase());
+      if (fl) {
+        const { deleteFreelancer } = useStore.getState();
+        deleteFreelancer(fl.id);
+      }
+    }
+
+    // 3. Supprimer le user local
     deleteUser(id);
     setDeleteConfirm(null);
-    toast.success('Compte supprimé');
+    toast.success('Compte et prestataire supprimés');
   };
 
   const handleClearLogs = () => {

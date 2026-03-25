@@ -86,18 +86,33 @@ export const useStore = create<CRMStore>()(
       loadFromSupabase: async () => {
         const data = await loadAllFromSupabase();
         if (!data) return;
-        set(state => ({
-          clients: data.clients.length > 0 ? data.clients : state.clients,
-          freelancers: data.freelancers.length > 0 ? data.freelancers : state.freelancers,
-          projects: data.projects.length > 0 ? data.projects : state.projects,
-          invoices: data.invoices.length > 0 ? data.invoices : state.invoices,
-          devis: data.devis.length > 0 ? data.devis : state.devis,
-          snoozeSubscriptions: data.snoozeSubscriptions.length > 0 ? data.snoozeSubscriptions : state.snoozeSubscriptions,
-          settings: data.settings || state.settings,
-          unifiedTags: data.unifiedTags.length > 0 ? data.unifiedTags : state.unifiedTags,
-          projectTemplates: data.projectTemplates.length > 0 ? data.projectTemplates : state.projectTemplates,
-          clientPortalAccesses: data.clientPortalAccesses.length > 0 ? data.clientPortalAccesses : state.clientPortalAccesses,
-        }));
+
+        // Dédupliquer les freelancers par email (évite les doublons créés par la sync)
+        const dedup = (arr: any[]) => {
+          const seen = new Set<string>();
+          return arr.filter(item => {
+            const key = item.email?.toLowerCase() || item.id;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+        };
+
+        set(state => {
+          const freelancers = data.freelancers.length > 0 ? dedup(data.freelancers) : dedup(state.freelancers);
+          return {
+            clients: data.clients.length > 0 ? data.clients : state.clients,
+            freelancers,
+            projects: data.projects.length > 0 ? data.projects : state.projects,
+            invoices: data.invoices.length > 0 ? data.invoices : state.invoices,
+            devis: data.devis.length > 0 ? data.devis : state.devis,
+            snoozeSubscriptions: data.snoozeSubscriptions.length > 0 ? data.snoozeSubscriptions : state.snoozeSubscriptions,
+            settings: data.settings || state.settings,
+            unifiedTags: data.unifiedTags.length > 0 ? data.unifiedTags : state.unifiedTags,
+            projectTemplates: data.projectTemplates.length > 0 ? data.projectTemplates : state.projectTemplates,
+            clientPortalAccesses: data.clientPortalAccesses.length > 0 ? data.clientPortalAccesses : state.clientPortalAccesses,
+          };
+        });
         console.log('[DataSync] Loaded from Supabase');
       },
 
