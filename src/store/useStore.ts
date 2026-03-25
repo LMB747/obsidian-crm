@@ -714,12 +714,16 @@ export const useStore = create<CRMStore>()(
       deleteSnoozeSubscription: (id) => {
         const sub = get().snoozeSubscriptions.find(s => s.id === id);
         set((state) => ({ snoozeSubscriptions: state.snoozeSubscriptions.filter((s) => s.id !== id) }));
+        deleteFromSupabaseNow('crm_snooze', id);
         toast.warning('Abonnement supprimé');
         get()._audit('delete_snooze', 'snooze', sub?.utilisateur || id);
       },
 
       clearAllSnoozeSubscriptions: () => {
-        const count = get().snoozeSubscriptions.length;
+        const subs = get().snoozeSubscriptions;
+        const count = subs.length;
+        // Mark all IDs as deleted and remove from Supabase
+        subs.forEach(s => deleteFromSupabaseNow('crm_snooze', s.id));
         set({ snoozeSubscriptions: [] });
         toast.warning('Tous les abonnements supprimés');
         get()._audit('clear_all_snooze', 'snooze', `${count} abonnements supprimés`);
@@ -864,6 +868,7 @@ export const useStore = create<CRMStore>()(
 
       deleteUnifiedTag: (id) => {
         set((state) => ({ unifiedTags: state.unifiedTags.filter((t) => t.id !== id) }));
+        deleteFromSupabaseNow('crm_tags', id);
       },
 
       // ─── Settings Actions ──────────────────────────────────────────────────

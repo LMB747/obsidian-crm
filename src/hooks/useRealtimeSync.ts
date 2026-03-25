@@ -14,7 +14,8 @@ export function useRealtimeSync() {
   const loadFromSupabase = useStore(s => s.loadFromSupabase);
   const addNotification = useStore(s => s.addNotification);
   const channelsRef = useRef<any[]>([]);
-  const pollingRef = useRef<any>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const realtimeWorkingRef = useRef(false);
 
   useEffect(() => {
     if (!currentUser || !isSupabaseConfigured()) return;
@@ -22,7 +23,7 @@ export function useRealtimeSync() {
     const supabase = getSupabase();
     if (!supabase) return;
 
-    let realtimeWorking = false;
+    realtimeWorkingRef.current = false;
 
     // ── Realtime: écouter les changements sur les projets ──
     const projectChannel = supabase
@@ -32,7 +33,7 @@ export function useRealtimeSync() {
         schema: 'public',
         table: 'crm_projects',
       }, (payload: any) => {
-        realtimeWorking = true;
+        realtimeWorkingRef.current = true;
         const data = payload.new?.data;
         if (!data) return;
 
@@ -66,11 +67,11 @@ export function useRealtimeSync() {
         schema: 'public',
         table: 'project_messages',
       }, (payload: any) => {
-        realtimeWorking = true;
+        realtimeWorkingRef.current = true;
         const msg = payload.new;
         if (!msg || msg.user_id === currentUser.id) return;
 
-        toast.info(`💬 ${msg.user_nom}: ${msg.content.slice(0, 50)}${msg.content.length > 50 ? '...' : ''}`);
+        toast.info(`${msg.user_nom}: ${msg.content.slice(0, 50)}${msg.content.length > 50 ? '...' : ''}`);
         addNotification({
           titre: 'Nouveau message',
           message: `${msg.user_nom}: ${msg.content.slice(0, 80)}`,
@@ -90,7 +91,7 @@ export function useRealtimeSync() {
         schema: 'public',
         table: 'crm_clients',
       }, () => {
-        realtimeWorking = true;
+        realtimeWorkingRef.current = true;
         loadFromSupabase();
       })
       .on('postgres_changes', {
@@ -98,7 +99,7 @@ export function useRealtimeSync() {
         schema: 'public',
         table: 'crm_invoices',
       }, () => {
-        realtimeWorking = true;
+        realtimeWorkingRef.current = true;
         loadFromSupabase();
       })
       .subscribe();
@@ -106,16 +107,16 @@ export function useRealtimeSync() {
     channelsRef.current = [projectChannel, chatChannel, dataChannel];
 
     // ── Polling périodique — garantit la sync même sans Realtime ──
-    // Si Realtime fonctionne: poll toutes les 60s (backup)
-    // Si Realtime ne fonctionne pas: poll toutes les 15s
+    // Interval reads realtimeWorkingRef dynamically each tick
+    // so the effective rate adapts when realtime connects
     pollingRef.current = setInterval(() => {
       loadFromSupabase();
-    }, realtimeWorking ? 60000 : 15000);
+    }, 30000); // Fixed 30s — realtime handles fast updates when available
 
     return () => {
       channelsRef.current.forEach(ch => supabase.removeChannel(ch));
       channelsRef.current = [];
       if (pollingRef.current) clearInterval(pollingRef.current);
     };
-  }, [currentUser?.id]);
+  }, [currentUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 }

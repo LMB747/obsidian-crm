@@ -357,10 +357,14 @@ export const Admin: React.FC = () => {
     import('../lib/supabaseAuth').then(({ listUsers }) => {
       listUsers().then(profiles => {
         if (!profiles || profiles.length === 0) return;
-        const localIds = new Set(users.map(u => u.id));
-        const localEmails = new Set(users.map(u => u.email?.toLowerCase()).filter(Boolean));
+        const currentUsers = useStore.getState().users;
+        const localIds = new Set(currentUsers.map(u => u.id));
+        const localEmails = new Set(currentUsers.map(u => u.email?.toLowerCase()).filter(Boolean));
 
         for (const p of profiles) {
+          // Skip inactive/deactivated profiles — never re-add deleted users
+          if (p.is_active === false) continue;
+
           const emailLower = (p.email || '').toLowerCase();
           // Skip si déjà présent par ID ou par email
           if (localIds.has(p.id) || localEmails.has(emailLower)) continue;
@@ -373,7 +377,7 @@ export const Admin: React.FC = () => {
             prenom: p.prenom || '',
             role: (p.role as any) || 'viewer',
             permissions: (p.permissions as any) || [],
-            isActive: p.is_active !== false,
+            isActive: true,
             passwordHash: '',
             dateCreation: new Date().toISOString().split('T')[0],
           };
