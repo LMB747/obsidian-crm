@@ -6,7 +6,7 @@ import {
   CheckCircle, XCircle, Search, Calendar, AlertTriangle,
   LogIn, LogOut, ChevronRight, X, Save, RefreshCw,
   Building, Link2, Send, Copy, Globe, Mail,
-  TrendingUp, BookOpen, Crosshair
+  TrendingUp, BookOpen, Crosshair, Link as LinkIcon
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useStore } from '../store/useStore';
@@ -533,9 +533,18 @@ export const Admin: React.FC = () => {
     setModalOpen(false);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
+    // Supprimer aussi dans Supabase profiles
+    try {
+      const { getSupabase } = await import('../lib/supabaseAuth');
+      const supabase = getSupabase();
+      if (supabase) {
+        await supabase.from('profiles').delete().eq('id', id);
+      }
+    } catch {}
     deleteUser(id);
     setDeleteConfirm(null);
+    toast.success('Compte supprimé');
   };
 
   const handleClearLogs = () => {
@@ -815,6 +824,17 @@ export const Admin: React.FC = () => {
                         {/* Actions */}
                         <td className="px-5 py-4">
                           <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => {
+                                const url = `${window.location.origin}/#login`;
+                                navigator.clipboard.writeText(url);
+                                toast.success('Lien de connexion copié !', url);
+                              }}
+                              className="p-2 rounded-lg text-slate-400 hover:text-primary-300 hover:bg-primary-500/10 transition-all"
+                              title="Copier le lien de connexion"
+                            >
+                              <LinkIcon className="w-4 h-4" />
+                            </button>
                             <button
                               onClick={() => handleOpenEdit(user)}
                               className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-obsidian-700 transition-all"

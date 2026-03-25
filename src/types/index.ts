@@ -528,6 +528,7 @@ export interface CRMStore {
   // Actions — Supabase Sync
   loadUserDataFromSupabase: (userId: string) => Promise<void>;
   initUserSpace: (userId: string, email: string) => Promise<void>;
+  loadFromSupabase: () => Promise<void>;
 
   // Actions — Personal Space
   personalTasks: PersonalTask[];

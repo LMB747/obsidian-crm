@@ -5,6 +5,7 @@ import { CRMStore, Client, Freelancer, Project, Invoice, SnoozeSubscription, Act
 import { toast } from '../components/ui/Toast';
 import { verifyPassword } from '../utils/crypto';
 import * as supaService from '../lib/supabaseService';
+import { loadAllFromSupabase, saveAllToSupabase, deleteFromSupabase, ENTITY_TABLE_MAP } from '../lib/supabaseDataSync';
 import {
   mockClients,
   mockFreelancers,
@@ -79,6 +80,25 @@ export const useStore = create<CRMStore>()(
         get().addAuditLog(log);
         // Sync to Supabase (fire-and-forget)
         supaService.syncAuditLog({ ...log, id: '' });
+      },
+
+      // ─── Supabase CRM Data Sync ──────────────────────────────────────────
+      loadFromSupabase: async () => {
+        const data = await loadAllFromSupabase();
+        if (!data) return;
+        set(state => ({
+          clients: data.clients.length > 0 ? data.clients : state.clients,
+          freelancers: data.freelancers.length > 0 ? data.freelancers : state.freelancers,
+          projects: data.projects.length > 0 ? data.projects : state.projects,
+          invoices: data.invoices.length > 0 ? data.invoices : state.invoices,
+          devis: data.devis.length > 0 ? data.devis : state.devis,
+          snoozeSubscriptions: data.snoozeSubscriptions.length > 0 ? data.snoozeSubscriptions : state.snoozeSubscriptions,
+          settings: data.settings || state.settings,
+          unifiedTags: data.unifiedTags.length > 0 ? data.unifiedTags : state.unifiedTags,
+          projectTemplates: data.projectTemplates.length > 0 ? data.projectTemplates : state.projectTemplates,
+          clientPortalAccesses: data.clientPortalAccesses.length > 0 ? data.clientPortalAccesses : state.clientPortalAccesses,
+        }));
+        console.log('[DataSync] Loaded from Supabase');
       },
 
       // ─── Tags unifiés ─────────────────────────────────────────────────────
@@ -793,6 +813,8 @@ export const useStore = create<CRMStore>()(
         set(state => ({ currentUser: updated, users: state.users.map(u => u.id === user.id ? updated : u) }));
         get()._audit('login', undefined, `Connexion réussie — ${user.email}`);
         toast.success('Bienvenue', `${user.prenom} ${user.nom}`);
+        // Load CRM data from Supabase after login
+        setTimeout(() => get().loadFromSupabase(), 500);
         return { success: true };
       },
 
@@ -860,6 +882,9 @@ export const useStore = create<CRMStore>()(
           };
           set(state => ({ users: [...state.users, newUser], currentUser: newUser }));
         }
+
+        // Load CRM data from Supabase after Supabase auth login
+        setTimeout(() => get().loadFromSupabase(), 500);
 
         // Initialize user space & load data from Supabase (background)
         supaService.ensureUserSpaceExists(resolvedUserId, email)
@@ -1354,6 +1379,40 @@ export const useStore = create<CRMStore>()(
     }
   )
 );
+
+// ─── Auto-sync to Supabase on any data change (debounced 3s) ────────────────
+let _crmSyncTimer: ReturnType<typeof setTimeout> | null = null;
+useStore.subscribe((state, prevState) => {
+  const dataChanged =
+    state.clients !== prevState.clients ||
+    state.freelancers !== prevState.freelancers ||
+    state.projects !== prevState.projects ||
+    state.invoices !== prevState.invoices ||
+    state.devis !== prevState.devis ||
+    state.snoozeSubscriptions !== prevState.snoozeSubscriptions ||
+    state.settings !== prevState.settings ||
+    state.unifiedTags !== prevState.unifiedTags ||
+    state.projectTemplates !== prevState.projectTemplates ||
+    state.clientPortalAccesses !== prevState.clientPortalAccesses;
+
+  if (!dataChanged) return;
+
+  if (_crmSyncTimer) clearTimeout(_crmSyncTimer);
+  _crmSyncTimer = setTimeout(() => {
+    saveAllToSupabase({
+      clients: state.clients,
+      freelancers: state.freelancers,
+      projects: state.projects,
+      invoices: state.invoices,
+      devis: state.devis || [],
+      snoozeSubscriptions: state.snoozeSubscriptions,
+      settings: state.settings,
+      unifiedTags: state.unifiedTags,
+      projectTemplates: state.projectTemplates || [],
+      clientPortalAccesses: state.clientPortalAccesses || [],
+    });
+  }, 3000);
+});
 
 // ─── Computed Selectors ─────────────────────────────────────────────────────
 export const selectDashboardStats = (state: CRMStore) => {
