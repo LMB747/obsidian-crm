@@ -549,12 +549,13 @@ export const Admin: React.FC = () => {
   const handleDelete = async (id: string) => {
     const user = users.find(u => u.id === id);
 
-    // 1. Supprimer le profil Supabase
+    // 1. Désactiver le profil Supabase (soft-delete — empêche la réapparition)
     try {
       const { getSupabase } = await import('../lib/supabaseAuth');
       const supabase = getSupabase();
       if (supabase) {
-        await supabase.from('profiles').delete().eq('id', id);
+        // Marquer is_active = false au lieu de DELETE (évite les FK errors et la recréation au login)
+        await supabase.from('profiles').update({ is_active: false }).eq('id', id);
       }
     } catch {}
 
