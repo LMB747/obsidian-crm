@@ -112,6 +112,20 @@ export interface Client {
   typePresence?: TypePresence;
   localisation?: string;
   siteWeb?: string;
+
+  // Lead Scoring
+  scoreEngagement?: number;     // 0-50
+  scoreFit?: number;            // 0-50
+  scoreTotal?: number;          // 0-100
+  temperature?: 'froid' | 'tiède' | 'chaud' | 'brûlant';
+  roleDecision?: 'décideur' | 'influenceur' | 'utilisateur' | 'bloqueur';
+  icpMatch?: boolean;           // Ideal Customer Profile match
+  dernierContact?: string;      // ISO date
+  prochainContact?: string;     // ISO date
+  emailsEnvoyes?: number;
+  emailsOuverts?: number;
+  appels?: number;
+  reunions?: number;
 }
 
 // ─── PROJECT ──────────────────────────────────────────────────────────────────
@@ -391,6 +405,42 @@ export interface Devis {
   conditions: string;
 }
 
+// ─── EMAIL SEQUENCES ─────────────────────────────────────────────────────────
+export type SequenceType = 'onboarding' | 'relance_lead' | 'nurturing' | 'reactivation' | 'custom';
+export type SequenceStepAction = 'email' | 'attente' | 'condition' | 'tache';
+
+export interface SequenceStep {
+  id: string;
+  ordre: number;
+  action: SequenceStepAction;
+  delaiJours: number;
+  sujet?: string;
+  contenu?: string;
+  condition?: string;
+  tacheDescription?: string;
+}
+
+export interface EmailSequence {
+  id: string;
+  nom: string;
+  type: SequenceType;
+  description: string;
+  steps: SequenceStep[];
+  dateCreation: string;
+  isActive: boolean;
+}
+
+export interface SequenceEnrollment {
+  id: string;
+  sequenceId: string;
+  clientId: string;
+  clientNom: string;
+  etapeActuelle: number;
+  dateDebut: string;
+  dateProchaineEtape: string;
+  statut: 'active' | 'completed' | 'paused' | 'cancelled';
+}
+
 // ─── STORE TYPES ──────────────────────────────────────────────────────────────
 export interface CRMStore {
   // Data
@@ -561,6 +611,16 @@ export interface CRMStore {
   deleteDevis: (id: string) => void;
   convertDevisToInvoice: (devisId: string) => void;
   convertDevisToProject: (devisId: string) => void;
+
+  // Actions — Email Sequences
+  emailSequences: EmailSequence[];
+  sequenceEnrollments: SequenceEnrollment[];
+  addEmailSequence: (seq: Omit<EmailSequence, 'id' | 'dateCreation'>) => void;
+  updateEmailSequence: (id: string, updates: Partial<EmailSequence>) => void;
+  deleteEmailSequence: (id: string) => void;
+  enrollInSequence: (sequenceId: string, clientId: string, clientNom: string) => void;
+  advanceSequenceStep: (enrollmentId: string) => void;
+  cancelSequenceEnrollment: (enrollmentId: string) => void;
 }
 
 export interface Notification {

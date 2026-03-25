@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import { CRMStore, Client, Freelancer, Project, Invoice, SnoozeSubscription, Activity, Task, AgencySettings, TimerSession, UserAccount, AuditLog, TaskNote, ProjectActivity, Notification, Workspace, Invitation, Objective, ProjectSubCategory, UnifiedTag, PersonalTask, PersonalNote, ClientPortalAccess, ProjectTemplate, Devis } from '../types';
+import { CRMStore, Client, Freelancer, Project, Invoice, SnoozeSubscription, Activity, Task, AgencySettings, TimerSession, UserAccount, AuditLog, TaskNote, ProjectActivity, Notification, Workspace, Invitation, Objective, ProjectSubCategory, UnifiedTag, PersonalTask, PersonalNote, ClientPortalAccess, ProjectTemplate, Devis, EmailSequence, SequenceEnrollment, SequenceStep } from '../types';
 import { toast } from '../components/ui/Toast';
 import { verifyPassword } from '../utils/crypto';
 import * as supaService from '../lib/supabaseService';
@@ -65,6 +65,8 @@ export const useStore = create<CRMStore>()(
       clientPortalAccesses: [],
       projectTemplates: [],
       devis: [],
+      emailSequences: [],
+      sequenceEnrollments: [],
 
       // ─── Audit helper (private) ──────────────────────────────────────────
       _audit: (action: string, section?: string, details?: string) => {
@@ -596,6 +598,74 @@ export const useStore = create<CRMStore>()(
         });
         get().updateDevis(devisId, { statut: 'accepté' });
         toast.success('Projet créé depuis le devis');
+      },
+
+      // ─── Email Sequence Actions ─────────────────────────────────────────────
+      addEmailSequence: (seqData) => {
+        const newSeq: EmailSequence = {
+          ...seqData,
+          id: uuidv4(),
+          dateCreation: new Date().toISOString(),
+        };
+        set(state => ({ emailSequences: [...state.emailSequences, newSeq] }));
+        toast.success(`Séquence "${newSeq.nom}" créée`);
+        get()._audit('create_sequence', 'sequences', `Séquence "${newSeq.nom}"`);
+      },
+      updateEmailSequence: (id, updates) => {
+        set(state => ({ emailSequences: state.emailSequences.map(s => s.id === id ? { ...s, ...updates } : s) }));
+      },
+      deleteEmailSequence: (id) => {
+        const seq = get().emailSequences.find(s => s.id === id);
+        set(state => ({
+          emailSequences: state.emailSequences.filter(s => s.id !== id),
+          sequenceEnrollments: state.sequenceEnrollments.filter(e => e.sequenceId !== id),
+        }));
+        toast.warning('Séquence supprimée');
+        get()._audit('delete_sequence', 'sequences', seq?.nom || id);
+      },
+      enrollInSequence: (sequenceId, clientId, clientNom) => {
+        const seq = get().emailSequences.find(s => s.id === sequenceId);
+        if (!seq || seq.steps.length === 0) return;
+        const now = new Date();
+        const firstStep = seq.steps[0];
+        const nextDate = new Date(now.getTime() + firstStep.delaiJours * 86400000);
+        const enrollment: SequenceEnrollment = {
+          id: uuidv4(),
+          sequenceId,
+          clientId,
+          clientNom,
+          etapeActuelle: 0,
+          dateDebut: now.toISOString(),
+          dateProchaineEtape: nextDate.toISOString(),
+          statut: 'active',
+        };
+        set(state => ({ sequenceEnrollments: [...state.sequenceEnrollments, enrollment] }));
+        toast.success(`${clientNom} inscrit dans "${seq.nom}"`);
+        get()._audit('enroll_sequence', 'sequences', `${clientNom} → ${seq.nom}`);
+      },
+      advanceSequenceStep: (enrollmentId) => {
+        set(state => ({
+          sequenceEnrollments: state.sequenceEnrollments.map(e => {
+            if (e.id !== enrollmentId) return e;
+            const seq = state.emailSequences.find(s => s.id === e.sequenceId);
+            if (!seq) return e;
+            const nextStep = e.etapeActuelle + 1;
+            if (nextStep >= seq.steps.length) {
+              return { ...e, etapeActuelle: nextStep, statut: 'completed' as const, dateProchaineEtape: new Date().toISOString() };
+            }
+            const step = seq.steps[nextStep];
+            const nextDate = new Date(Date.now() + step.delaiJours * 86400000);
+            return { ...e, etapeActuelle: nextStep, dateProchaineEtape: nextDate.toISOString() };
+          }),
+        }));
+      },
+      cancelSequenceEnrollment: (enrollmentId) => {
+        set(state => ({
+          sequenceEnrollments: state.sequenceEnrollments.map(e =>
+            e.id === enrollmentId ? { ...e, statut: 'cancelled' as const } : e
+          ),
+        }));
+        toast.warning('Inscription annulée');
       },
 
       // ─── Snooze Actions ────────────────────────────────────────────────────
@@ -1403,6 +1473,8 @@ export const useStore = create<CRMStore>()(
         clientPortalAccesses: state.clientPortalAccesses,
         projectTemplates: state.projectTemplates,
         devis: state.devis,
+        emailSequences: state.emailSequences,
+        sequenceEnrollments: state.sequenceEnrollments,
       }),
     }
   )

@@ -25,6 +25,7 @@ const PersonalSpace   = lazy(() => import('./pages/PersonalSpace').then(m => ({ 
 const ClientPortal    = lazy(() => import('./pages/ClientPortal'));
 const Proposals        = lazy(() => import('./pages/Proposals'));
 const DealPipeline    = lazy(() => import('./pages/DealPipeline'));
+const EmailSequences  = lazy(() => import('./pages/EmailSequences'));
 const NotFound        = lazy(() => import('./pages/NotFound').then(m => ({ default: m.NotFound })));
 
 const pageMap: Record<string, React.ComponentType> = {
@@ -47,6 +48,7 @@ const pageMap: Record<string, React.ComponentType> = {
   'client-portal': ClientPortal,
   'proposals': Proposals,
   'pipeline': DealPipeline,
+  'sequences': EmailSequences,
 };
 
 // ─── Helper: sync user into Zustand store ──────────────────────────────────

@@ -17,6 +17,7 @@ import { useDebounce } from '../hooks/useDebounce';
 import { TagPicker } from '../components/ui/TagPicker';
 import clsx from 'clsx';
 import { toast } from '../components/ui/Toast';
+import { scoreClient, TEMPERATURE_CONFIG } from '../lib/leadScoring';
 
 const statusConfig: Record<ClientStatus, { label: string; variant: any; dot: string }> = {
   vip:      { label: 'VIP',      variant: 'warning', dot: 'bg-amber-400' },
@@ -29,6 +30,7 @@ const emptyClient: Omit<Client, 'id' | 'dateCreation' | 'derniereActivite'> = {
   nom: '', entreprise: '', email: '', telephone: '', adresse: '',
   statut: 'prospect', source: 'autre', tags: [], notes: '', chiffreAffaires: 0,
   secteurActivite: undefined, typePresence: undefined, localisation: '', siteWeb: '',
+  roleDecision: undefined, icpMatch: undefined,
 };
 
 // ─── Client Activity Timeline ─────────────────────────────────────────────────
@@ -156,12 +158,21 @@ export const Clients: React.FC = () => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [viewTab, setViewTab] = useState<'info' | 'activite'>('info');
+  const [tempFilter, setTempFilter] = useState<string>('tous');
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importPreview, setImportPreview] = useState<Omit<Client, 'id' | 'dateCreation' | 'derniereActivite'>[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const scoredClients = useMemo(() => {
+    return clients.map(client => {
+      const hasActiveProject = projects.some(p => p.clientId === client.id && (p.statut === 'en cours' || p.statut === 'planification'));
+      const scores = scoreClient(client, hasActiveProject);
+      return { ...client, ...scores };
+    });
+  }, [clients, projects]);
+
   const filtered = useMemo(() => {
-    let list = [...clients];
+    let list = [...scoredClients];
     if (debouncedSearchQuery) {
       const q = debouncedSearchQuery.toLowerCase();
       list = list.filter(c =>
@@ -173,8 +184,9 @@ export const Clients: React.FC = () => {
     if (statusFilter !== 'tous') list = list.filter(c => c.statut === statusFilter);
     if (sectorFilter) list = list.filter(c => c.secteurActivite === sectorFilter);
     if (presenceFilter) list = list.filter(c => c.typePresence === presenceFilter);
+    if (tempFilter !== 'tous') list = list.filter(c => c.temperature === tempFilter);
     return list.sort((a, b) => b.chiffreAffaires - a.chiffreAffaires);
-  }, [clients, debouncedSearchQuery, statusFilter, sectorFilter, presenceFilter]);
+  }, [scoredClients, debouncedSearchQuery, statusFilter, sectorFilter, presenceFilter, tempFilter]);
 
   const stats = useMemo(() => ({
     total: clients.length,
@@ -191,7 +203,7 @@ export const Clients: React.FC = () => {
 
   const openEdit = (client: Client) => {
     setEditingClient(client);
-    setFormData({ nom: client.nom, entreprise: client.entreprise, email: client.email, telephone: client.telephone, adresse: client.adresse, statut: client.statut, source: client.source, tags: client.tags, notes: client.notes, chiffreAffaires: client.chiffreAffaires, secteurActivite: client.secteurActivite, typePresence: client.typePresence, localisation: client.localisation || '', siteWeb: client.siteWeb || '' });
+    setFormData({ nom: client.nom, entreprise: client.entreprise, email: client.email, telephone: client.telephone, adresse: client.adresse, statut: client.statut, source: client.source, tags: client.tags, notes: client.notes, chiffreAffaires: client.chiffreAffaires, secteurActivite: client.secteurActivite, typePresence: client.typePresence, localisation: client.localisation || '', siteWeb: client.siteWeb || '', roleDecision: client.roleDecision, icpMatch: client.icpMatch });
     setIsModalOpen(true);
     setActiveMenu(null);
   };
@@ -312,6 +324,20 @@ export const Clients: React.FC = () => {
             <option value="web">Web</option>
             <option value="hybride">Hybride</option>
           </select>
+          <div className="flex gap-2">
+            {(['tous', 'brûlant', 'chaud', 'tiède', 'froid'] as const).map(temp => (
+              <button
+                key={temp}
+                onClick={() => setTempFilter(temp)}
+                className={clsx('px-2.5 py-1 rounded-lg text-xs font-semibold transition-all',
+                  tempFilter === temp ? 'bg-primary-500/20 text-primary-300' : 'text-slate-500 hover:text-white'
+                )}
+              >
+                {temp === 'tous' ? 'Tous' : TEMPERATURE_CONFIG[temp]?.label}
+                <span className="ml-1 text-slate-600">{temp === 'tous' ? scoredClients.length : scoredClients.filter(c => c.temperature === temp).length}</span>
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <input ref={fileInputRef} type="file" accept=".csv" onChange={handleFileUpload} className="hidden" />
@@ -414,6 +440,11 @@ export const Clients: React.FC = () => {
                         <div className="flex items-center gap-1.5">
                           <div className={clsx('w-1.5 h-1.5 rounded-full', sc.dot)} />
                           <Badge variant={sc.variant}>{sc.label}</Badge>
+                          {client.temperature && (
+                            <span className={clsx('px-2 py-0.5 rounded-full text-[10px] font-semibold border', TEMPERATURE_CONFIG[client.temperature]?.color)}>
+                              {TEMPERATURE_CONFIG[client.temperature]?.label}
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="px-5 py-4 text-right hidden md:table-cell">
@@ -527,6 +558,24 @@ export const Clients: React.FC = () => {
           {formData.typePresence && formData.typePresence !== 'local' && (
             <InputField label="Site web" type="url" value={formData.siteWeb || ''} onChange={(e: any) => setFormData(p => ({ ...p, siteWeb: e.target.value }))} />
           )}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Role decisionnel</label>
+              <select value={formData.roleDecision || ''} onChange={e => setFormData(p => ({ ...p, roleDecision: (e.target.value || undefined) as any }))} className="w-full bg-obsidian-700 border border-card-border text-white text-sm rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                <option value="">Role decisionnel...</option>
+                <option value="décideur">Decideur</option>
+                <option value="influenceur">Influenceur</option>
+                <option value="utilisateur">Utilisateur</option>
+                <option value="bloqueur">Bloqueur</option>
+              </select>
+            </div>
+            <div className="flex items-end pb-1">
+              <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+                <input type="checkbox" checked={formData.icpMatch || false} onChange={e => setFormData(p => ({ ...p, icpMatch: e.target.checked }))} className="rounded border-card-border" />
+                ICP Match (Profil Client Ideal)
+              </label>
+            </div>
+          </div>
           <div>
             <label className="block text-xs font-semibold text-slate-400 mb-1.5">CA estimé (€)</label>
             <input type="number" value={formData.chiffreAffaires} onChange={(e) => setFormData(p => ({ ...p, chiffreAffaires: Number(e.target.value) }))} className="w-full bg-obsidian-700 border border-card-border text-white text-sm rounded-xl px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-primary-500" />
@@ -596,6 +645,33 @@ export const Clients: React.FC = () => {
                     <p className="text-accent-green text-lg font-bold">{viewingClient.chiffreAffaires.toLocaleString('fr-FR')} €</p>
                   </div>
                 </div>
+                {/* ── Lead Score Bar ── */}
+                {(() => {
+                  const scored = scoredClients.find(c => c.id === viewingClient.id);
+                  if (!scored) return null;
+                  return (
+                    <div className="bg-obsidian-700 rounded-xl p-4 border border-card-border space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-slate-400">Score total</span>
+                        <div className="flex items-center gap-2">
+                          {scored.temperature && (
+                            <span className={clsx('px-2 py-0.5 rounded-full text-[10px] font-semibold border', TEMPERATURE_CONFIG[scored.temperature]?.color)}>
+                              {TEMPERATURE_CONFIG[scored.temperature]?.label}
+                            </span>
+                          )}
+                          <span className="text-xs font-bold text-white">{scored.scoreTotal}/100</span>
+                        </div>
+                      </div>
+                      <div className="h-2 rounded-full bg-obsidian-900 overflow-hidden">
+                        <div className="h-full rounded-full bg-gradient-to-r from-blue-500 via-amber-500 to-red-500" style={{ width: `${scored.scoreTotal}%` }} />
+                      </div>
+                      <div className="flex justify-between text-[10px] text-slate-500">
+                        <span>Fit: {scored.scoreFit}/50</span>
+                        <span>Engagement: {scored.scoreEngagement}/50</span>
+                      </div>
+                    </div>
+                  );
+                })()}
                 {(viewingClient.secteurActivite || viewingClient.typePresence) && (
                   <div className="grid grid-cols-2 gap-4">
                     {viewingClient.secteurActivite && (

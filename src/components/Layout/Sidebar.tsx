@@ -22,6 +22,7 @@ const navItems: { id: string; label: string; icon: React.FC<{ className?: string
   { id: 'calendar',     label: 'Calendrier',     icon: CalendarDays,    badge: null },
   { id: 'analytics',    label: 'Analytiques',    icon: BarChart3,       badge: null },
   { id: 'pipeline',     label: 'Pipeline',       icon: Target,          badge: null },
+  { id: 'sequences',    label: 'Séquences',      icon: Zap,             badge: null },
   { id: 'media-buying', label: 'Media Buying',   icon: TrendingUp,      badge: null },
   { id: 'prospection',  label: 'Prospection IA', icon: ScanSearch,      badge: 'IA' },
   { id: 'personal',     label: 'Mon Espace',     icon: BookOpen,        badge: null },
